@@ -1,0 +1,49 @@
+version: '3.8'
+
+services:
+  bot:
+    build: .
+    container_name: telegram-bot
+    restart: unless-stopped
+    
+    # Переменные окружения из .env файла
+    env_file:
+      - .env
+    
+    # Дополнительные переменные окружения
+    environment:
+      # Playwright всегда в headless режиме в контейнере
+      - WB_HEADLESS=true
+      - WB_STATE_FILE=/app/storage/state.json
+      - WB_DOWNLOADS_PATH=/app/storage/downloads
+      # Оптимизация для Playwright
+      - NODE_OPTIONS=--max-old-space-size=512
+    
+    # Persistent storage для сессии браузера и временных файлов
+    volumes:
+      - ./storage:/app/storage
+    
+    # Ограничения ресурсов (критично для Playwright)
+    deploy:
+      resources:
+        limits:
+          cpus: '1.5'           # Максимум 1.5 CPU cores
+          memory: 1536M         # Максимум 1.5GB RAM
+        reservations:
+          cpus: '0.5'           # Минимум 0.5 CPU cores
+          memory: 768M          # Минимум 768MB RAM
+    
+    # Логирование с ротацией
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"         # Максимальный размер лог-файла
+        max-file: "3"           # Хранить 3 файла логов
+    
+    # Healthcheck (опционально)
+    # healthcheck:
+    #   test: ["CMD", "python", "-c", "import os; exit(0 if os.path.exists('/app/storage/state.json') else 1)"]
+    #   interval: 30s
+    #   timeout: 10s
+    #   retries: 3
+    #   start_period: 40s
