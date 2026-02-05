@@ -29,6 +29,10 @@ class BotSettings(BaseSettings):
     # Admin for auth codes
     admin_telegram_id: int = 0
     
+    # Pricing
+    report_price: int = 500  # Price per report in rubles
+    payment_token: str = ""  # Payment provider token
+    
     # App
     debug: bool = False
     log_level: str = "INFO"

@@ -110,6 +110,7 @@ class Application:
         # Register middlewares
         logger.info("🔧 Registering middlewares...")
         self.dp.message.middleware(UserMiddleware())
+        self.dp.callback_query.middleware(UserMiddleware())
         
         # Register handlers (including auth_code handler)
         logger.info("📝 Registering handlers...")
@@ -130,25 +131,25 @@ class Application:
         self.dp["app"] = self  # Make app accessible to handlers
         
         # Initialize Wildberries client WITH bot reference
-        logger.info("🌐 Initializing Wildberries client...")
-        wb_config = WBConfig(
-            phone=settings.wb_phone,
-            headless=settings.wb_headless,
-            state_file_path=settings.wb_state_file,
-            downloads_path=settings.wb_downloads_path
-        )
-        state_storage = StateStorage(settings.wb_state_file)
-        self.wb_client = WBClient(
-            config=wb_config, 
-            state_storage=state_storage,
-            bot=self.bot,  # Pass bot instance
-            admin_id=settings.admin_telegram_id  # Pass admin ID
-        )
+        # logger.info("🌐 Initializing Wildberries client...")
+        # wb_config = WBConfig(
+        #     phone=settings.wb_phone,
+        #     headless=settings.wb_headless,
+        #     state_file_path=settings.wb_state_file,
+        #     downloads_path=settings.wb_downloads_path
+        # )
+        # state_storage = StateStorage(settings.wb_state_file)
+        # self.wb_client = WBClient(
+        #     config=wb_config, 
+        #     state_storage=state_storage,
+        #     bot=self.bot,  # Pass bot instance
+        #     admin_id=settings.admin_telegram_id  # Pass admin ID
+        # )
         
         # Connect browser (may request auth code via Telegram)
-        logger.info("🔌 Connecting browser...")
-        await self.wb_client.connect()
-        logger.info("✅ Browser connected successfully!")
+        # logger.info("🔌 Connecting browser...")
+        # await self.wb_client.connect()
+        # logger.info("✅ Browser connected successfully!")
         
         # Initialize report queue
         logger.info("📥 Initializing report queue...")

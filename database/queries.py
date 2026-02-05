@@ -3,7 +3,7 @@ import logging
 from typing import Optional
 from datetime import datetime
 from .client import get_supabase
-from .models import User, CreateUserDTO, UpdateBalanceDTO, FeatureFlag
+from .models import User, CreateUserDTO, UpdateBalanceDTO, FeatureFlag, Payment, CreatePaymentDTO, PaymentStatus
 
 logger = logging.getLogger(__name__)
 
@@ -125,3 +125,83 @@ async def get_wb_use_mock() -> bool:
 async def get_compare_cards_mock() -> bool:
     """Get compare_cards_mock feature flag value"""
     return await get_feature_flag("IS_COMPARE_CARDS_MOCK", default=True)
+
+
+# Payment functions
+
+async def create_payment(data: CreatePaymentDTO) -> Optional[Payment]:
+    """Create a new payment with status NEW"""
+    try:
+        supabase = get_supabase()
+        payment_data = {
+            "user_id": data.user_id,
+            "reports_amount": data.reports_amount,
+            "total_price": data.total_price,
+            "status": PaymentStatus.NEW.value,
+            "created_at": datetime.utcnow().isoformat(),
+        }
+        
+        response = supabase.table("payments").insert(payment_data).execute()
+        
+        if response.data and len(response.data) > 0:
+            payment = Payment(**response.data[0])
+            logger.info(f"✅ Created payment {payment.id} for user {data.user_id}")
+            return payment
+        return None
+    except Exception as e:
+        logger.error(f"Error creating payment for user {data.user_id}: {e}", exc_info=True)
+        return None
+
+
+async def get_payment(payment_id: int) -> Optional[Payment]:
+    """Get payment by ID"""
+    try:
+        supabase = get_supabase()
+        response = supabase.table("payments").select("*").eq("id", payment_id).execute()
+        
+        if response.data and len(response.data) > 0:
+            return Payment(**response.data[0])
+        return None
+    except Exception as e:
+        logger.error(f"Error getting payment {payment_id}: {e}", exc_info=True)
+        return None
+
+
+async def update_payment_status(payment_id: int, status: PaymentStatus) -> Optional[Payment]:
+    """Update payment status"""
+    try:
+        supabase = get_supabase()
+        response = supabase.table("payments").update({
+            "status": status.value
+        }).eq("id", payment_id).execute()
+        
+        if response.data and len(response.data) > 0:
+            logger.info(f"✅ Updated payment {payment_id} status to {status.value}")
+            return Payment(**response.data[0])
+        return None
+    except Exception as e:
+        logger.error(f"Error updating payment {payment_id} status: {e}", exc_info=True)
+        return None
+
+
+async def update_payment_charges(
+    payment_id: int,
+    telegram_charge_id: str,
+    provider_charge_id: str
+) -> Optional[Payment]:
+    """Update payment charge IDs and set status to SUCCESS"""
+    try:
+        supabase = get_supabase()
+        response = supabase.table("payments").update({
+            "telegram_payment_charge_id": telegram_charge_id,
+            "provider_payment_charge_id": provider_charge_id,
+            "status": PaymentStatus.SUCCESS.value
+        }).eq("id", payment_id).execute()
+        
+        if response.data and len(response.data) > 0:
+            logger.info(f"✅ Updated payment {payment_id} charges and marked as SUCCESS")
+            return Payment(**response.data[0])
+        return None
+    except Exception as e:
+        logger.error(f"Error updating payment {payment_id} charges: {e}", exc_info=True)
+        return None
