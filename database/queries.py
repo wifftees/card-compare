@@ -3,7 +3,7 @@ import logging
 from typing import Optional
 from datetime import datetime
 from .client import get_supabase
-from .models import User, CreateUserDTO, UpdateBalanceDTO, FeatureFlag, Payment, CreatePaymentDTO, PaymentStatus
+from .models import User, CreateUserDTO, UpdateBalanceDTO, FeatureFlag, Payment, CreatePaymentDTO, PaymentStatus, Price, ProductOption
 
 logger = logging.getLogger(__name__)
 
@@ -127,6 +127,35 @@ async def get_compare_cards_mock() -> bool:
     return await get_feature_flag("IS_COMPARE_CARDS_MOCK", default=True)
 
 
+# Price functions
+
+async def get_price_by_option(option: ProductOption) -> Optional[int]:
+    """
+    Get price by product option.
+    
+    Args:
+        option: Product option (SINGLE or PACKET)
+        
+    Returns:
+        int: Price in rubles, or None if not found
+    """
+    try:
+        logger.info(f"🔍 Fetching price for option '{option.value}' from database...")
+        supabase = get_supabase()
+        response = supabase.table("prices").select("*").eq("option", option.value).execute()
+
+        if response.data and len(response.data) > 0:
+            price = Price(**response.data[0])
+            logger.info(f"💰 Price for '{option.value}' = {price.price} RUB (from database)")
+            return price.price
+        
+        logger.warning(f"⚠️  Price for option '{option.value}' not found in database")
+        return None
+    except Exception as e:
+        logger.error(f"❌ Error getting price for option '{option.value}' from database: {e}", exc_info=True)
+        return None
+
+
 # Payment functions
 
 async def create_payment(data: CreatePaymentDTO) -> Optional[Payment]:
@@ -137,6 +166,7 @@ async def create_payment(data: CreatePaymentDTO) -> Optional[Payment]:
             "user_id": data.user_id,
             "reports_amount": data.reports_amount,
             "total_price": data.total_price,
+            "option": data.option.value,
             "status": PaymentStatus.NEW.value,
             "created_at": datetime.utcnow().isoformat(),
         }
@@ -145,7 +175,7 @@ async def create_payment(data: CreatePaymentDTO) -> Optional[Payment]:
         
         if response.data and len(response.data) > 0:
             payment = Payment(**response.data[0])
-            logger.info(f"✅ Created payment {payment.id} for user {data.user_id}")
+            logger.info(f"✅ Created payment {payment.id} for user {data.user_id} (option={payment.option.value})")
             return payment
         return None
     except Exception as e:

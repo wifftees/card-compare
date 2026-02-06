@@ -12,7 +12,7 @@ from aiogram.types import (
 )
 from aiogram.fsm.context import FSMContext
 
-from database.models import User
+from database.models import User, ProductOption
 from bot.states import RefillBalanceStates
 from bot.config import settings
 
@@ -41,96 +41,98 @@ async def show_balance(message: Message, user: User):
 
 @router.callback_query(F.data == "refill_balance")
 async def refill_balance_callback(callback: CallbackQuery, user: User, state: FSMContext):
-    """Handle refill balance button click - start refill process"""
+    """Handle refill balance button click - show pricing options"""
     logger.info(f"User {user.id} started refill balance process")
     
     await callback.answer()
     
-    # Set FSM state
-    await state.set_state(RefillBalanceStates.waiting_for_amount)
+    # Get prices from database
+    from database.queries import get_price_by_option
     
-    # Create cancel keyboard
+    single_price = await get_price_by_option(ProductOption.SINGLE)
+    packet_price = await get_price_by_option(ProductOption.PACKET)
+    
+    if single_price is None or packet_price is None:
+        logger.error(f"❌ Failed to fetch prices from database for user {user.id}")
+        await callback.message.answer(
+            "❌ Ошибка загрузки цен. Попробуйте позже."
+        )
+        return
+    
+    logger.info(
+        f"💰 Loaded prices for user {user.id}: "
+        f"SINGLE={single_price} RUB, PACKET={packet_price} RUB"
+    )
+    
+    # Create keyboard with pricing options
     keyboard = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="❌ Отменить пополнение баланса", callback_data="cancel_refill")]
+        [InlineKeyboardButton(
+            text=f"📄 Один отчет - {single_price} ₽", 
+            callback_data="buy_single"
+        )],
+        [InlineKeyboardButton(
+            text=f"📦 Пакет (5 отчетов) - {packet_price} ₽", 
+            callback_data="buy_packet"
+        )],
+        [InlineKeyboardButton(text="❌ Отменить", callback_data="cancel_refill")]
     ])
     
     refill_text = f"""
 💳 <b>Пополнение баланса</b>
 
-1 отчет = <b>{settings.report_price} ₽</b>
+Выберите вариант покупки:
 
-Введите количество отчетов, которые вы хотите оплатить:
+📄 <b>Один отчет</b> - {single_price} ₽
+📦 <b>Пакет (5 отчетов)</b> - {packet_price} ₽
+
+<i>Нажмите на кнопку для оплаты</i>
 """
     
     await callback.message.answer(refill_text, reply_markup=keyboard)
 
 
-@router.callback_query(F.data == "cancel_refill")
-async def cancel_refill_callback(callback: CallbackQuery, state: FSMContext):
-    """Handle cancel refill button click"""
-    user_id = callback.from_user.id
-    logger.info(f"❌ [REFILL] User {user_id} cancelled refill process")
-    
-    # Get state data before clearing to log what was cancelled
-    data = await state.get_data()
-    amount = data.get("amount")
-    total_price = data.get("total_price")
-    
-    if amount or total_price:
-        logger.info(
-            f"📊 [REFILL] Cancelled payment details for user {user_id}: "
-            f"reports_amount={amount}, total_price={total_price} RUB"
-        )
-    
-    await state.clear()
-    await callback.answer("❌ Пополнение баланса отменено", show_alert=True)
-    await callback.message.delete()
-    logger.info(f"✅ [REFILL] Refill process cancelled and state cleared for user {user_id}")
-
-
-@router.callback_query(F.data == "pay_invoice")
-async def pay_invoice_callback(callback: CallbackQuery, user: User, state: FSMContext):
-    """Handle pay invoice button click - send invoice for payment"""
-    logger.info(f"💳 [PAYMENT] User {user.id} clicked pay button")
+@router.callback_query(F.data == "buy_single")
+async def buy_single_callback(callback: CallbackQuery, user: User, state: FSMContext):
+    """Handle buy single report button - send invoice immediately"""
+    logger.info(f"💳 [PAYMENT] User {user.id} selected SINGLE option")
     
     await callback.answer()
     
-    # Get amount from FSM context
-    data = await state.get_data()
-    amount = data.get("amount")
-    total_price = data.get("total_price")
-    
-    if not amount or not total_price:
-        logger.warning(f"⚠️ [PAYMENT] User {user.id}: missing payment data in FSM state")
-        await callback.message.answer("❌ Ошибка: данные о платеже не найдены. Начните заново.")
-        await state.clear()
-        return
-    
-    logger.info(
-        f"📊 [PAYMENT] User {user.id}: creating payment - "
-        f"reports_amount={amount}, total_price={total_price} RUB, "
-        f"price_per_report={settings.report_price} RUB"
-    )
-    
-    # Create payment entity in database with status NEW
-    from database.queries import create_payment
+    # Get price from database
+    from database.queries import get_price_by_option, create_payment
     from database.models import CreatePaymentDTO
     
+    price = await get_price_by_option(ProductOption.SINGLE)
+    
+    if price is None:
+        logger.error(f"❌ [PAYMENT] Failed to fetch SINGLE price for user {user.id}")
+        await callback.message.answer("❌ Ошибка загрузки цены. Попробуйте позже.")
+        return
+    
+    reports_amount = 1
+    total_price = price
+    
+    logger.info(
+        f"📊 [PAYMENT] User {user.id}: creating SINGLE payment - "
+        f"reports_amount={reports_amount}, total_price={total_price} RUB"
+    )
+    
+    # Create payment entity in database
     payment = await create_payment(CreatePaymentDTO(
         user_id=user.id,
-        reports_amount=amount,
-        total_price=total_price
+        reports_amount=reports_amount,
+        total_price=total_price,
+        option=ProductOption.SINGLE
     ))
     
     if not payment:
-        logger.error(f"❌ [PAYMENT] User {user.id}: failed to create payment in database")
+        logger.error(f"❌ [PAYMENT] User {user.id}: failed to create SINGLE payment in database")
         await callback.message.answer("❌ Ошибка создания платежа. Попробуйте позже.")
-        await state.clear()
         return
     
     logger.info(
         f"✅ [PAYMENT] Created payment {payment.id} for user {user.id} "
-        f"(status={payment.status.value}, reports={payment.reports_amount}, "
+        f"(option=SINGLE, status={payment.status.value}, reports={payment.reports_amount}, "
         f"price={payment.total_price} RUB)"
     )
     
@@ -139,7 +141,7 @@ async def pay_invoice_callback(callback: CallbackQuery, user: User, state: FSMCo
     
     # Create LabeledPrice structure
     prices = [
-        LabeledPrice(label=f"Отчеты ({amount} шт.)", amount=total_price_kopecks)
+        LabeledPrice(label=f"Отчет (1 шт.)", amount=total_price_kopecks)
     ]
     
     # Set state to waiting for payment
@@ -150,12 +152,12 @@ async def pay_invoice_callback(callback: CallbackQuery, user: User, state: FSMCo
         f"(amount={total_price_kopecks} kopecks, payload={payment.id})"
     )
     
-    # Send invoice for payment with payment_id in payload
+    # Send invoice for payment
     await callback.message.bot.send_invoice(
         chat_id=callback.message.chat.id,
         title="💳 Пополнение баланса",
-        description=f"Покупка {amount} отчетов по {settings.report_price} ₽ каждый",
-        payload=str(payment.id),  # Put payment_id in payload
+        description=f"Покупка 1 отчета",
+        payload=str(payment.id),
         provider_token=settings.payment_token,
         currency="RUB",
         prices=prices,
@@ -176,80 +178,103 @@ async def pay_invoice_callback(callback: CallbackQuery, user: User, state: FSMCo
     logger.info(f"✅ [PAYMENT] Invoice sent successfully for payment {payment.id}")
 
 
-@router.message(RefillBalanceStates.waiting_for_amount, F.text)
-@router.message(RefillBalanceStates.waiting_for_confirmation, F.text)
-async def process_refill_amount(message: Message, user: User, state: FSMContext):
-    """Process user input for refill amount (works for both initial input and changes)"""
-    logger.info(
-        f"📝 [REFILL] User {user.id} entered amount: '{message.text}' "
-        f"(current state: {await state.get_state()})"
-    )
+@router.callback_query(F.data == "buy_packet")
+async def buy_packet_callback(callback: CallbackQuery, user: User, state: FSMContext):
+    """Handle buy packet button - send invoice immediately"""
+    logger.info(f"💳 [PAYMENT] User {user.id} selected PACKET option")
     
-    # Validate input
-    try:
-        amount = int(message.text.strip())
-        
-        if amount <= 0:
-            logger.warning(
-                f"⚠️ [REFILL] User {user.id} entered invalid amount: {amount} (<= 0)"
-            )
-            await message.answer("❌ Количество отчетов должно быть больше нуля. Попробуйте еще раз:")
-            return
-        
-        if amount > 1000:
-            logger.warning(
-                f"⚠️ [REFILL] User {user.id} entered amount exceeding limit: {amount} (> 1000)"
-            )
-            await message.answer("❌ Максимальное количество отчетов за раз - 1000. Попробуйте еще раз:")
-            return
-            
-    except ValueError:
-        logger.warning(
-            f"⚠️ [REFILL] User {user.id} entered non-numeric value: '{message.text}'"
-        )
-        await message.answer("❌ Пожалуйста, введите корректное число:")
+    await callback.answer()
+    
+    # Get price from database
+    from database.queries import get_price_by_option, create_payment
+    from database.models import CreatePaymentDTO
+    
+    price = await get_price_by_option(ProductOption.PACKET)
+    
+    if price is None:
+        logger.error(f"❌ [PAYMENT] Failed to fetch PACKET price for user {user.id}")
+        await callback.message.answer("❌ Ошибка загрузки цены. Попробуйте позже.")
         return
     
-    # Calculate total price
-    total_price = amount * settings.report_price
+    reports_amount = 5
+    total_price = price
     
     logger.info(
-        f"💰 [REFILL] User {user.id}: calculated payment details - "
-        f"reports_amount={amount}, price_per_report={settings.report_price} RUB, "
-        f"total_price={total_price} RUB"
+        f"📊 [PAYMENT] User {user.id}: creating PACKET payment - "
+        f"reports_amount={reports_amount}, total_price={total_price} RUB"
     )
     
-    # Save amount to FSM context
-    await state.update_data(amount=amount, total_price=total_price)
-    await state.set_state(RefillBalanceStates.waiting_for_confirmation)
+    # Create payment entity in database
+    payment = await create_payment(CreatePaymentDTO(
+        user_id=user.id,
+        reports_amount=reports_amount,
+        total_price=total_price,
+        option=ProductOption.PACKET
+    ))
+    
+    if not payment:
+        logger.error(f"❌ [PAYMENT] User {user.id}: failed to create PACKET payment in database")
+        await callback.message.answer("❌ Ошибка создания платежа. Попробуйте позже.")
+        return
     
     logger.info(
-        f"💾 [REFILL] Saved payment data to FSM state for user {user.id}: "
-        f"amount={amount}, total_price={total_price}"
+        f"✅ [PAYMENT] Created payment {payment.id} for user {user.id} "
+        f"(option=PACKET, status={payment.status.value}, reports={payment.reports_amount}, "
+        f"price={payment.total_price} RUB)"
     )
     
-    # Create keyboard with payment and cancel buttons
-    keyboard = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="✅ Оплатить", callback_data="pay_invoice")],
-        [InlineKeyboardButton(text="❌ Отменить", callback_data="cancel_refill")]
-    ])
+    # Calculate price in kopecks
+    total_price_kopecks = total_price * 100
     
-    confirmation_text = f"""
-💳 <b>Подтверждение пополнения</b>
-
-Количество отчетов: <b>{amount}</b>
-Цена за отчет: <b>{settings.report_price} ₽</b>
-
-💰 <b>Итого к оплате: {total_price} ₽</b>
-
-<i>Чтобы изменить количество, введите другое число</i>
-"""
+    # Create LabeledPrice structure
+    prices = [
+        LabeledPrice(label=f"Пакет отчетов (5 шт.)", amount=total_price_kopecks)
+    ]
     
-    await message.answer(confirmation_text, reply_markup=keyboard)
+    # Set state to waiting for payment
+    await state.set_state(RefillBalanceStates.waiting_for_payment)
+    
     logger.info(
-        f"✅ [REFILL] Sent confirmation message to user {user.id} "
-        f"for {amount} reports ({total_price} RUB)"
+        f"📤 [PAYMENT] Sending invoice for payment {payment.id} to user {user.id} "
+        f"(amount={total_price_kopecks} kopecks, payload={payment.id})"
     )
+    
+    # Send invoice for payment
+    await callback.message.bot.send_invoice(
+        chat_id=callback.message.chat.id,
+        title="💳 Пополнение баланса",
+        description=f"Покупка пакета из 5 отчетов",
+        payload=str(payment.id),
+        provider_token=settings.payment_token,
+        currency="RUB",
+        prices=prices,
+        start_parameter="refill_balance",
+        photo_url=None,
+        photo_size=None,
+        photo_width=None,
+        photo_height=None,
+        need_name=False,
+        need_phone_number=False,
+        need_email=False,
+        need_shipping_address=False,
+        send_phone_number_to_provider=False,
+        send_email_to_provider=False,
+        is_flexible=False
+    )
+    
+    logger.info(f"✅ [PAYMENT] Invoice sent successfully for payment {payment.id}")
+
+
+@router.callback_query(F.data == "cancel_refill")
+async def cancel_refill_callback(callback: CallbackQuery, state: FSMContext):
+    """Handle cancel refill button click"""
+    user_id = callback.from_user.id
+    logger.info(f"❌ [REFILL] User {user_id} cancelled refill process")
+    
+    await state.clear()
+    await callback.answer("❌ Пополнение баланса отменено", show_alert=True)
+    await callback.message.delete()
+    logger.info(f"✅ [REFILL] Refill process cancelled and state cleared for user {user_id}")
 
 
 @router.pre_checkout_query()
@@ -291,6 +316,7 @@ async def process_pre_checkout_query(pre_checkout_query: PreCheckoutQuery):
         logger.info(
             f"📊 [PRE-CHECKOUT] Found payment {payment_id}: "
             f"user_id={payment.user_id}, status={payment.status.value}, "
+            f"option={payment.option.value}, "
             f"reports_amount={payment.reports_amount}, total_price={payment.total_price} RUB"
         )
         
@@ -306,23 +332,37 @@ async def process_pre_checkout_query(pre_checkout_query: PreCheckoutQuery):
             )
             return
         
-        # Verify price: total_price / reports_amount should equal REPORT_PRICE
-        price_per_report = payment.total_price / payment.reports_amount
+        # Get current price for the option from database
+        from database.queries import get_price_by_option
         
-        logger.info(
-            f"💰 [PRE-CHECKOUT] Validating price: "
-            f"price_per_report={price_per_report:.2f} RUB, "
-            f"expected={settings.report_price} RUB"
-        )
+        current_price = await get_price_by_option(payment.option)
         
-        if abs(price_per_report - settings.report_price) > 0.01:  # Allow small float difference
+        if current_price is None:
             logger.error(
-                f"❌ [PRE-CHECKOUT] Price mismatch for payment {payment_id}: "
-                f"expected {settings.report_price} RUB, got {price_per_report:.2f} RUB"
+                f"❌ [PRE-CHECKOUT] Failed to fetch current price for option {payment.option.value}"
             )
             await pre_checkout_query.answer(
                 ok=False,
                 error_message="Ошибка проверки цены. Попробуйте еще раз."
+            )
+            return
+        
+        logger.info(
+            f"💰 [PRE-CHECKOUT] Validating price for option {payment.option.value}: "
+            f"payment_price={payment.total_price} RUB, "
+            f"current_price={current_price} RUB"
+        )
+        
+        # Compare payment price with current price
+        if payment.total_price != current_price:
+            logger.warning(
+                f"⚠️ [PRE-CHECKOUT] Price changed for payment {payment_id}: "
+                f"payment was created with {payment.total_price} RUB, "
+                f"current price is {current_price} RUB"
+            )
+            await pre_checkout_query.answer(
+                ok=False,
+                error_message="Цена изменилась. Пожалуйста, создайте новый платеж."
             )
             return
         
