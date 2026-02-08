@@ -3,7 +3,11 @@ import logging
 from typing import Optional
 from datetime import datetime
 from .client import get_supabase
-from .models import User, CreateUserDTO, UpdateBalanceDTO, FeatureFlag, Payment, CreatePaymentDTO, PaymentStatus, Price, ProductOption
+from .models import (
+    User, CreateUserDTO, UpdateBalanceDTO, FeatureFlag,
+    Payment, CreatePaymentDTO, PaymentStatus, Price, ProductOption,
+    Report, CreateReportDTO, ReportState
+)
 
 logger = logging.getLogger(__name__)
 
@@ -129,15 +133,15 @@ async def get_compare_cards_mock() -> bool:
 
 # Price functions
 
-async def get_price_by_option(option: ProductOption) -> Optional[int]:
+async def get_price_by_option(option: ProductOption) -> Optional[Price]:
     """
-    Get price by product option.
+    Get price configuration by product option.
     
     Args:
         option: Product option (SINGLE or PACKET)
         
     Returns:
-        int: Price in rubles, or None if not found
+        Price: Price object with price and reports_amount, or None if not found
     """
     try:
         logger.info(f"🔍 Fetching price for option '{option.value}' from database...")
@@ -146,8 +150,11 @@ async def get_price_by_option(option: ProductOption) -> Optional[int]:
 
         if response.data and len(response.data) > 0:
             price = Price(**response.data[0])
-            logger.info(f"💰 Price for '{option.value}' = {price.price} RUB (from database)")
-            return price.price
+            logger.info(
+                f"💰 Price for '{option.value}' = {price.price} RUB, "
+                f"reports_amount = {price.reports_amount} (from database)"
+            )
+            return price
         
         logger.warning(f"⚠️  Price for option '{option.value}' not found in database")
         return None
@@ -164,7 +171,6 @@ async def create_payment(data: CreatePaymentDTO) -> Optional[Payment]:
         supabase = get_supabase()
         payment_data = {
             "user_id": data.user_id,
-            "reports_amount": data.reports_amount,
             "total_price": data.total_price,
             "option": data.option.value,
             "status": PaymentStatus.NEW.value,
@@ -197,12 +203,27 @@ async def get_payment(payment_id: int) -> Optional[Payment]:
         return None
 
 
+async def get_payment_by_external_id(external_invoice_id: str) -> Optional[Payment]:
+    """Get payment by external invoice ID (YooKassa order_id)"""
+    try:
+        supabase = get_supabase()
+        response = supabase.table("payments").select("*").eq("external_invoice_id", external_invoice_id).execute()
+        
+        if response.data and len(response.data) > 0:
+            return Payment(**response.data[0])
+        return None
+    except Exception as e:
+        logger.error(f"Error getting payment by external_invoice_id {external_invoice_id}: {e}", exc_info=True)
+        return None
+
+
 async def update_payment_status(payment_id: int, status: PaymentStatus) -> Optional[Payment]:
-    """Update payment status"""
+    """Update payment status and updated_at timestamp"""
     try:
         supabase = get_supabase()
         response = supabase.table("payments").update({
-            "status": status.value
+            "status": status.value,
+            "updated_at": datetime.utcnow().isoformat()
         }).eq("id", payment_id).execute()
         
         if response.data and len(response.data) > 0:
@@ -225,7 +246,8 @@ async def update_payment_charges(
         response = supabase.table("payments").update({
             "telegram_payment_charge_id": telegram_charge_id,
             "provider_payment_charge_id": provider_charge_id,
-            "status": PaymentStatus.SUCCESS.value
+            "status": PaymentStatus.SUCCESS.value,
+            "updated_at": datetime.utcnow().isoformat()
         }).eq("id", payment_id).execute()
         
         if response.data and len(response.data) > 0:
@@ -235,3 +257,218 @@ async def update_payment_charges(
     except Exception as e:
         logger.error(f"Error updating payment {payment_id} charges: {e}", exc_info=True)
         return None
+
+
+async def update_payment_with_yookassa_data(
+    payment_id: int,
+    external_invoice_id: str,
+    confirmation_url: str,
+    status: PaymentStatus
+) -> Optional[Payment]:
+    """Update payment with YooKassa data (external_invoice_id, confirmation_url, status)"""
+    try:
+        supabase = get_supabase()
+        response = supabase.table("payments").update({
+            "external_invoice_id": external_invoice_id,
+            "confirmation_url": confirmation_url,
+            "status": status.value,
+            "updated_at": datetime.utcnow().isoformat()
+        }).eq("id", payment_id).execute()
+        
+        if response.data and len(response.data) > 0:
+            logger.info(
+                f"✅ Updated payment {payment_id} with YooKassa data: "
+                f"external_invoice_id={external_invoice_id}, status={status.value}"
+            )
+            return Payment(**response.data[0])
+        return None
+    except Exception as e:
+        logger.error(
+            f"Error updating payment {payment_id} with YooKassa data: {e}",
+            exc_info=True
+        )
+        return None
+
+
+# Report functions
+
+async def create_report(data: CreateReportDTO) -> Optional[Report]:
+    """Create a new report with state NEW"""
+    try:
+        supabase = get_supabase()
+        report_data = {
+            "user_id": data.user_id,
+            "articles": data.articles,
+            "state": ReportState.NEW.value,
+            "created_at": datetime.utcnow().isoformat(),
+        }
+        
+        response = supabase.table("reports").insert(report_data).execute()
+        
+        if response.data and len(response.data) > 0:
+            report = Report(**response.data[0])
+            logger.info(f"✅ Created report {report.id} for user {data.user_id} (articles={data.articles})")
+            return report
+        return None
+    except Exception as e:
+        logger.error(f"Error creating report for user {data.user_id}: {e}", exc_info=True)
+        return None
+
+
+async def update_report_state(report_id: int, state: ReportState) -> Optional[Report]:
+    """Update report state and updated_at timestamp"""
+    try:
+        supabase = get_supabase()
+        response = supabase.table("reports").update({
+            "state": state.value,
+            "updated_at": datetime.utcnow().isoformat()
+        }).eq("id", report_id).execute()
+        
+        if response.data and len(response.data) > 0:
+            logger.info(f"✅ Updated report {report_id} state to {state.value}")
+            return Report(**response.data[0])
+        return None
+    except Exception as e:
+        logger.error(f"Error updating report {report_id} state: {e}", exc_info=True)
+        return None
+
+
+# Admin broadcast query functions
+
+def _fetch_all_rows(supabase, table: str, columns: str, filters: Optional[dict] = None) -> list[dict]:
+    """
+    Fetch all rows from a Supabase table, handling the default 1000-row limit
+    by paginating with .range().
+    
+    Args:
+        supabase: Supabase client instance
+        table: Table name
+        columns: Columns to select (e.g. "user_id")
+        filters: Optional dict of {column: value} equality filters
+        
+    Returns:
+        list[dict]: All rows from the table matching the filters
+    """
+    all_data: list[dict] = []
+    batch_size = 1000
+    offset = 0
+    
+    while True:
+        query = supabase.table(table).select(columns)
+        if filters:
+            for col, val in filters.items():
+                query = query.eq(col, val)
+        resp = query.range(offset, offset + batch_size - 1).execute()
+        
+        batch = resp.data or []
+        all_data.extend(batch)
+        
+        if len(batch) < batch_size:
+            break
+        offset += batch_size
+    
+    return all_data
+
+
+async def get_users_no_reports_no_payments() -> list[int]:
+    """
+    Get user IDs who pressed /start but never created a report or made a payment.
+    
+    Returns:
+        list[int]: Telegram user IDs
+    """
+    try:
+        supabase = get_supabase()
+        
+        # Fetch all user IDs (paginated)
+        users_data = _fetch_all_rows(supabase, "users", "id")
+        all_user_ids = {row["id"] for row in users_data}
+        
+        # Fetch user IDs that have at least one report (paginated)
+        reports_data = _fetch_all_rows(supabase, "reports", "user_id")
+        users_with_reports = {row["user_id"] for row in reports_data}
+        
+        # Fetch user IDs that have at least one successful payment (paginated)
+        payments_data = _fetch_all_rows(
+            supabase, "payments", "user_id",
+            filters={"status": PaymentStatus.SUCCESS.value}
+        )
+        users_with_payments = {row["user_id"] for row in payments_data}
+        
+        # Users with no reports AND no payments
+        result = list(all_user_ids - users_with_reports - users_with_payments)
+        logger.info(f"📊 [ADMIN] Users with no activity: {len(result)}")
+        return result
+    except Exception as e:
+        logger.error(f"Error fetching users with no reports/payments: {e}", exc_info=True)
+        return []
+
+
+async def get_users_one_report_no_payments() -> list[int]:
+    """
+    Get user IDs who used their trial report (exactly 1 report) but never made a payment.
+    
+    Returns:
+        list[int]: Telegram user IDs
+    """
+    try:
+        supabase = get_supabase()
+        
+        # Fetch all reports (paginated to avoid 1000-row limit)
+        reports_data = _fetch_all_rows(supabase, "reports", "user_id")
+        report_counts: dict[int, int] = {}
+        for row in reports_data:
+            uid = row["user_id"]
+            report_counts[uid] = report_counts.get(uid, 0) + 1
+        
+        # Users with exactly 1 report
+        users_one_report = {uid for uid, count in report_counts.items() if count == 1}
+        
+        # Fetch user IDs that have at least one successful payment (paginated)
+        payments_data = _fetch_all_rows(
+            supabase, "payments", "user_id",
+            filters={"status": PaymentStatus.SUCCESS.value}
+        )
+        users_with_payments = {row["user_id"] for row in payments_data}
+        
+        # Users with exactly 1 report AND no successful payments
+        result = list(users_one_report - users_with_payments)
+        logger.info(f"📊 [ADMIN] Users who used trial (1 report, no payments): {len(result)}")
+        return result
+    except Exception as e:
+        logger.error(f"Error fetching users with 1 report/no payments: {e}", exc_info=True)
+        return []
+
+
+async def get_users_single_purchase() -> list[int]:
+    """
+    Get user IDs who made exactly one SINGLE report purchase.
+    
+    Returns:
+        list[int]: Telegram user IDs
+    """
+    try:
+        supabase = get_supabase()
+        
+        # Fetch successful SINGLE payments (paginated)
+        payments_data = _fetch_all_rows(
+            supabase, "payments", "user_id",
+            filters={
+                "option": ProductOption.SINGLE.value,
+                "status": PaymentStatus.SUCCESS.value,
+            }
+        )
+        
+        # Count successful SINGLE payments per user
+        payment_counts: dict[int, int] = {}
+        for row in payments_data:
+            uid = row["user_id"]
+            payment_counts[uid] = payment_counts.get(uid, 0) + 1
+        
+        # Only users with exactly 1 successful SINGLE payment
+        result = [uid for uid, count in payment_counts.items() if count == 1]
+        logger.info(f"📊 [ADMIN] Users with SINGLE purchase: {len(result)}")
+        return result
+    except Exception as e:
+        logger.error(f"Error fetching users with single purchase: {e}", exc_info=True)
+        return []

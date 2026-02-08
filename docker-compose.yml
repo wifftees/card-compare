@@ -18,6 +18,13 @@ services:
       - WB_DOWNLOADS_PATH=/app/storage/downloads
       # Оптимизация для Playwright
       - NODE_OPTIONS=--max-old-space-size=512
+      # Webhook server settings
+      - WEBHOOK_HOST=0.0.0.0
+      - WEBHOOK_PORT=8080
+    
+    # Expose webhook port
+    ports:
+      - "8080:8080"
     
     # Persistent storage для сессии браузера и временных файлов
     volumes:

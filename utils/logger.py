@@ -1,18 +1,29 @@
-"""Logging configuration"""
+"""Logging configuration with file rotation support"""
 import logging
 import logging.handlers
 import os
 import sys
+from pathlib import Path
 from bot.config import settings
 
 
 def setup_logging():
-    """Setup logging configuration"""
+    """
+    Setup logging configuration with file rotation.
+    
+    Supports two rotation strategies:
+    - size: Rotates when file reaches max_bytes (default: 10MB)
+    - time: Rotates daily at midnight
+    
+    Rotated files are named:
+    - Size rotation: app.log, app.log.1, app.log.2, etc.
+    - Time rotation: app.log, app.log.2026-02-08, app.log.2026-02-07, etc.
+    """
     log_level = getattr(logging, settings.log_level.upper(), logging.INFO)
     
-    # Create formatter
+    # Create detailed formatter with more context
     formatter = logging.Formatter(
-        '%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+        '%(asctime)s - %(name)s - %(levelname)s - [%(filename)s:%(lineno)d] - %(message)s',
         datefmt='%Y-%m-%d %H:%M:%S'
     )
     
@@ -21,30 +32,60 @@ def setup_logging():
     console_handler.setLevel(log_level)
     console_handler.setFormatter(formatter)
     
-    # File handler with rotation
     # Create logs directory if it doesn't exist
-    logs_dir = "logs"
-    os.makedirs(logs_dir, exist_ok=True)
+    logs_dir = Path(settings.log_dir)
+    logs_dir.mkdir(parents=True, exist_ok=True)
     
-    # Rotating file handler: max 10MB per file, keep 5 backup files
-    log_file = os.path.join(logs_dir, "app.log")
-    file_handler = logging.handlers.RotatingFileHandler(
-        log_file,
-        maxBytes=10 * 1024 * 1024,  # 10MB
-        backupCount=5,
-        encoding='utf-8'
-    )
+    # Choose file handler based on rotation type
+    log_file = logs_dir / "app.log"
+    
+    if settings.log_rotation_type == "time":
+        # Time-based rotation: creates new file daily at midnight
+        # Files named: app.log.2026-02-08, app.log.2026-02-07, etc.
+        file_handler = logging.handlers.TimedRotatingFileHandler(
+            log_file,
+            when='midnight',
+            interval=1,
+            backupCount=settings.log_file_backup_count,
+            encoding='utf-8',
+            utc=False
+        )
+        logging.info("Using time-based log rotation (daily at midnight)")
+    else:
+        # Size-based rotation: creates new file when current exceeds max_bytes
+        # Files named: app.log, app.log.1, app.log.2, etc.
+        file_handler = logging.handlers.RotatingFileHandler(
+            log_file,
+            maxBytes=settings.log_file_max_bytes,
+            backupCount=settings.log_file_backup_count,
+            encoding='utf-8'
+        )
+        size_mb = settings.log_file_max_bytes / (1024 * 1024)
+        logging.info(f"Using size-based log rotation (max {size_mb:.1f}MB per file)")
+    
     file_handler.setLevel(log_level)
     file_handler.setFormatter(formatter)
     
-    # Root logger
+    # Root logger configuration
     root_logger = logging.getLogger()
     root_logger.setLevel(log_level)
+    
+    # Clear existing handlers to avoid duplicates
+    root_logger.handlers.clear()
+    
     root_logger.addHandler(console_handler)
     root_logger.addHandler(file_handler)
     
-    # Set specific loggers
+    # Configure specific library loggers
     logging.getLogger("aiogram").setLevel(logging.INFO)
     logging.getLogger("playwright").setLevel(logging.WARNING)
+    
+    # Silence noisy HTTP/network libraries
+    logging.getLogger("hpack").setLevel(logging.WARNING)
+    logging.getLogger("httpcore").setLevel(logging.WARNING)
+    logging.getLogger("httpx").setLevel(logging.WARNING)
+    
+    # Log initial configuration
+    root_logger.info(f"Logging initialized: level={settings.log_level}, dir={logs_dir}, backups={settings.log_file_backup_count}")
     
     return root_logger

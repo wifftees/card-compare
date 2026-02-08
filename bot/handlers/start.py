@@ -2,9 +2,8 @@
 import logging
 from aiogram import Router
 from aiogram.filters import CommandStart
-from aiogram.types import Message
+from aiogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton
 
-from bot.keyboards.main_menu import get_main_menu_keyboard
 from database.models import User
 
 logger = logging.getLogger(__name__)
@@ -24,10 +23,20 @@ async def cmd_start(message: Message, user: User):
 
 💰 <b>Ваш баланс:</b> {user.reports_balance} отчетов
 
-Выберите действие на клавиатуре ниже 👇
+Выберите действие ниже 👇
 """
+    
+    keyboard = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="🔍 Сравнение карточек", callback_data="compare_cards")],
+            [
+                InlineKeyboardButton(text="💰 Баланс", callback_data="balance"),
+                InlineKeyboardButton(text="💬 Поддержка", url="https://t.me/wifftees")
+            ],
+        ]
+    )
     
     await message.answer(
         welcome_text,
-        reply_markup=get_main_menu_keyboard()
+        reply_markup=keyboard
     )

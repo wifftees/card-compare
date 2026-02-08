@@ -15,17 +15,26 @@ class ReportTask:
     user_id: int
     chat_id: int
     articles: list[int]
+    report_id: Optional[int] = None
     loading_message_id: Optional[int] = None
     
     @classmethod
-    def create(cls, user_id: int, chat_id: int, articles: list[int], loading_message_id: Optional[int] = None):
+    def create(
+        cls,
+        user_id: int,
+        chat_id: int,
+        articles: list[int],
+        report_id: Optional[int] = None,
+        loading_message_id: Optional[int] = None,
+    ):
         """Create new task with unique ID"""
         return cls(
             task_id=str(uuid.uuid4()),
             user_id=user_id,
             chat_id=chat_id,
             articles=articles,
-            loading_message_id=loading_message_id
+            report_id=report_id,
+            loading_message_id=loading_message_id,
         )
 
 
@@ -38,6 +47,7 @@ class ReportResult:
     success: bool
     file_path: Optional[str] = None
     error: Optional[str] = None
+    report_id: Optional[int] = None
     loading_message_id: Optional[int] = None
 
 

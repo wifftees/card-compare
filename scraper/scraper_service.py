@@ -147,11 +147,11 @@ class WBScraperService:
         logger.info('✅ Create comparison button found')
         
         await create_comparison_button.click()
-        await self._page.wait_for_timeout(2000)
+        await self._page.wait_for_timeout(1000)
         logger.info('🖱️  Clicked create comparison button')
         
         # Wait for form to fully load
-        await self._page.wait_for_timeout(2000)
+        await self._page.wait_for_timeout(1000)
         
         # For each article
         for idx, article in enumerate(items):
@@ -179,7 +179,7 @@ class WBScraperService:
             logger.info('  ✅ Enter pressed')
             
             # Wait for results to load
-            await self._page.wait_for_timeout(3000)
+            await self._page.wait_for_timeout(1000)
             
             # Find recommended cards container
             logger.info('  🔍 Looking for recommended cards container...')
@@ -234,7 +234,7 @@ class WBScraperService:
         logger.info(f'🎉 All articles processed successfully! Total: {len(items)}')
         
         # Wait before looking for final buttons
-        await self._page.wait_for_timeout(2000)
+        await self._page.wait_for_timeout(1000)
         
         # After all iterations - find and click second button
         logger.info('🔍 Looking for final control buttons...')
@@ -253,7 +253,7 @@ class WBScraperService:
             await self._page.wait_for_timeout(1000)
             logger.info('🖱️  Clicking second button...')
             await second_button.click()
-            await self._page.wait_for_timeout(3000)
+            await self._page.wait_for_timeout(1000)
             logger.info('✅ Clicked second button')
         else:
             error_msg = f'Error: Expected at least 2 buttons, found: {buttons_count}'
@@ -272,7 +272,7 @@ class WBScraperService:
             await self._page.wait_for_timeout(5000)
         
         # Additional wait for UI to stabilize
-        await self._page.wait_for_timeout(2000)
+        await self._page.wait_for_timeout(1000)
         logger.info('✅ Page stabilized after comparison')
         
         logger.info('✅ compare_cards function completed successfully!')
@@ -291,7 +291,7 @@ class WBScraperService:
             logger.warning('⚠️  Network idle timeout, continuing anyway')
         
         # Additional wait for any loading overlays to disappear
-        await self._page.wait_for_timeout(5000)
+        await self._page.wait_for_timeout(3000)
         logger.info('✅ Page stabilized')
         
         # Counter for processed elements
@@ -305,7 +305,7 @@ class WBScraperService:
         logger.info('🔍 Looking for period filters...')
         period_filters = self._page.locator('[class^="Period-filters"]').first
         await period_filters.wait_for(state='visible', timeout=20000)
-        await self._page.wait_for_timeout(2000)
+        await self._page.wait_for_timeout(1000)
         logger.info('✅ Period filters found')
         
         # Get all buttons inside first div

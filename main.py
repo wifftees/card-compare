@@ -12,10 +12,12 @@ from aiogram.types import FSInputFile
 from bot.config import settings
 from bot.queue import ReportQueue, ReportTask, ReportResult
 from bot.middlewares.user_middleware import UserMiddleware
-from bot.handlers import start, balance, reports, common
+from bot.handlers import start, balance, reports, admin, common
+from bot.utils import delete_loading_sticker
 
 from database.client import SupabaseClient
-from database.queries import update_balance, check_balance, get_wb_use_mock
+from database.queries import update_balance, check_balance, get_wb_use_mock, update_report_state
+from database.models import ReportState
 
 # Browser test imports
 from scraper.wb_client import WBClient
@@ -39,7 +41,11 @@ class Application:
         self.result_processor_task: asyncio.Task | None = None
         self.auth_check_task: asyncio.Task | None = None
         self.state_saver_task: asyncio.Task | None = None
+        self.browser_restart_task: asyncio.Task | None = None
+        self.webhook_runner = None  # aiohttp AppRunner for webhook server
         self._shutdown = False
+        self._active_reports_count = 0  # Track active report generation
+        self._report_lock: asyncio.Lock | None = None  # Lock for updating count
     
     async def process_report_real(self, articles: list[int]) -> str:
         """
@@ -94,6 +100,9 @@ class Application:
         """Setup application components"""
         logger.info("🚀 Starting application...")
         
+        # Initialize lock for report tracking
+        self._report_lock = asyncio.Lock()
+        
         # Initialize Supabase
         logger.info("📊 Initializing Supabase client...")
         SupabaseClient.get_client()
@@ -123,6 +132,7 @@ class Application:
         self.dp.include_router(start.router)
         self.dp.include_router(balance.router)
         self.dp.include_router(reports.router)
+        self.dp.include_router(admin.router)
         
         # Register catch-all handler last
         self.dp.include_router(common.router)
@@ -131,25 +141,25 @@ class Application:
         self.dp["app"] = self  # Make app accessible to handlers
         
         # Initialize Wildberries client WITH bot reference
-        # logger.info("🌐 Initializing Wildberries client...")
-        # wb_config = WBConfig(
-        #     phone=settings.wb_phone,
-        #     headless=settings.wb_headless,
-        #     state_file_path=settings.wb_state_file,
-        #     downloads_path=settings.wb_downloads_path
-        # )
-        # state_storage = StateStorage(settings.wb_state_file)
-        # self.wb_client = WBClient(
-        #     config=wb_config, 
-        #     state_storage=state_storage,
-        #     bot=self.bot,  # Pass bot instance
-        #     admin_id=settings.admin_telegram_id  # Pass admin ID
-        # )
+        logger.info("🌐 Initializing Wildberries client...")
+        wb_config = WBConfig(
+            phone=settings.wb_phone,
+            headless=settings.wb_headless,
+            state_file_path=settings.wb_state_file,
+            downloads_path=settings.wb_downloads_path
+        )
+        state_storage = StateStorage(settings.wb_state_file)
+        self.wb_client = WBClient(
+            config=wb_config, 
+            state_storage=state_storage,
+            bot=self.bot,  # Pass bot instance
+            admin_id=settings.admin_telegram_id  # Pass admin ID
+        )
         
         # Connect browser (may request auth code via Telegram)
-        # logger.info("🔌 Connecting browser...")
-        # await self.wb_client.connect()
-        # logger.info("✅ Browser connected successfully!")
+        logger.info("🔌 Connecting browser...")
+        await self.wb_client.connect()
+        logger.info("✅ Browser connected successfully!")
         
         # Initialize report queue
         logger.info("📥 Initializing report queue...")
@@ -177,6 +187,11 @@ class Application:
                 
                 logger.info(f"⚙️  Processing task {task.task_id}")
                 
+                # Increment active reports count
+                async with self._report_lock:
+                    self._active_reports_count += 1
+                    logger.info(f"📊 Active reports: {self._active_reports_count}")
+                
                 try:
                     # Choose between real and mock processing
                     use_mock = await get_wb_use_mock()
@@ -194,6 +209,7 @@ class Application:
                         chat_id=task.chat_id,
                         success=True,
                         file_path=file_path,
+                        report_id=task.report_id,
                         loading_message_id=task.loading_message_id
                     )
                     
@@ -207,8 +223,15 @@ class Application:
                         chat_id=task.chat_id,
                         success=False,
                         error=str(e),
+                        report_id=task.report_id,
                         loading_message_id=task.loading_message_id
                     )
+                
+                finally:
+                    # Decrement active reports count
+                    async with self._report_lock:
+                        self._active_reports_count -= 1
+                        logger.info(f"📊 Active reports: {self._active_reports_count}")
                 
                 # Add result to result queue
                 await self.report_queue.add_result(result)
@@ -239,17 +262,18 @@ class Application:
                 
                 try:
                     # Delete loading sticker if it exists
-                    if result.loading_message_id:
-                        try:
-                            await self.bot.delete_message(
-                                chat_id=result.chat_id,
-                                message_id=result.loading_message_id
-                            )
-                            logger.info(f"🗑️  Deleted loading sticker {result.loading_message_id}")
-                        except Exception as e:
-                            logger.warning(f"⚠️  Could not delete loading sticker: {e}")
+                    await delete_loading_sticker(
+                        self.bot,
+                        result.chat_id,
+                        result.loading_message_id
+                    )
                     
                     if result.success:
+                        # Update report state to GENERATED
+                        if result.report_id:
+                            await update_report_state(result.report_id, ReportState.GENERATED)
+                            logger.info(f"📝 Report {result.report_id} marked as GENERATED")
+                        
                         # Send file
                         logger.info(f"📎 Sending file to chat {result.chat_id}")
                         
@@ -353,6 +377,86 @@ class Application:
         
         logger.info("🛑 Periodic state saver stopped")
     
+    async def periodic_browser_restart(self):
+        """
+        Background task to periodically restart the browser.
+        
+        This prevents browser disconnection issues that can occur after
+        prolonged usage (typically after several days). The browser state
+        is saved before restart and restored after.
+        """
+        interval = settings.wb_browser_restart_interval
+        logger.info(f"🔄 Periodic browser restart started (interval: {interval}s / {interval // 3600}h)")
+        
+        while not self._shutdown:
+            try:
+                # Wait for the configured interval
+                await asyncio.sleep(interval)
+                
+                if self._shutdown:
+                    break
+                
+                # Restart browser
+                if self.wb_client:
+                    logger.info("🔄 Performing scheduled browser restart...")
+                    
+                    # Wait for all active reports to complete
+                    max_wait_time = 300  # Maximum 5 minutes wait
+                    wait_start = asyncio.get_event_loop().time()
+                    
+                    while self._active_reports_count > 0:
+                        elapsed = asyncio.get_event_loop().time() - wait_start
+                        if elapsed > max_wait_time:
+                            logger.warning(
+                                f"⚠️ Timeout waiting for reports to complete. "
+                                f"Active reports: {self._active_reports_count}. Proceeding with restart anyway."
+                            )
+                            break
+                        
+                        logger.info(
+                            f"⏳ Waiting for {self._active_reports_count} active report(s) to complete... "
+                            f"({int(elapsed)}s elapsed)"
+                        )
+                        await asyncio.sleep(5)
+                    
+                    if self._active_reports_count == 0:
+                        logger.info("✅ All reports completed, proceeding with browser restart")
+                    
+                    # Save state before restart
+                    logger.info("💾 Saving browser state before restart...")
+                    await self.wb_client.save_current_state()
+                    
+                    # Disconnect browser
+                    logger.info("🔌 Disconnecting browser...")
+                    await self.wb_client.disconnect()
+                    
+                    # Wait a bit before reconnecting
+                    await asyncio.sleep(2)
+                    
+                    # Reconnect browser
+                    logger.info("🔌 Reconnecting browser...")
+                    await self.wb_client.connect()
+                    
+                    # Check authorization
+                    if self.wb_client._auth_service:
+                        logger.info("🔐 Checking authorization after restart...")
+                        await self.wb_client._auth_service.ensure_authorized()
+                    
+                    logger.info("✅ Browser restart completed successfully")
+                else:
+                    logger.warning("⚠️ WB client not initialized, skipping browser restart")
+                    
+            except asyncio.CancelledError:
+                logger.info("🛑 Periodic browser restart cancelled")
+                break
+            except Exception as e:
+                logger.error(f"❌ Error in periodic browser restart: {e}", exc_info=True)
+                # Continue running even if one restart fails
+                # Wait a bit before next attempt to avoid rapid failure loops
+                await asyncio.sleep(60)
+        
+        logger.info("🛑 Periodic browser restart stopped")
+    
     async def start(self):
         """Start the application"""
         # Setup components
@@ -374,6 +478,26 @@ class Application:
         logger.info("🚀 Starting periodic state saver...")
         self.state_saver_task = asyncio.create_task(self.periodic_state_saver())
         
+        # Start periodic browser restart
+        logger.info("🚀 Starting periodic browser restart...")
+        self.browser_restart_task = asyncio.create_task(self.periodic_browser_restart())
+        
+        # Start webhook server for YooKassa
+        logger.info("🌐 Starting webhook server...")
+        from api.server import start_webhook_server
+        try:
+            self.webhook_runner = await start_webhook_server(
+                bot=self.bot,
+                host=settings.webhook_host,
+                port=settings.webhook_port
+            )
+            logger.info(
+                f"✅ Webhook server started on {settings.webhook_host}:{settings.webhook_port}"
+            )
+        except Exception as e:
+            logger.error(f"❌ Failed to start webhook server: {e}", exc_info=True)
+            logger.warning("⚠️ Continuing without webhook server")
+        
         # Start bot polling
         logger.info("🎯 Starting bot polling...")
         try:
@@ -386,6 +510,15 @@ class Application:
         """Shutdown the application"""
         logger.info("🛑 Shutting down...")
         self._shutdown = True
+        
+        # Stop webhook server
+        if self.webhook_runner:
+            logger.info("🌐 Stopping webhook server...")
+            from api.server import stop_webhook_server
+            try:
+                await stop_webhook_server(self.webhook_runner)
+            except Exception as e:
+                logger.warning(f"⚠️ Error stopping webhook server: {e}")
         
         # Wait for workers to finish
         if self.worker_task:
@@ -413,6 +546,18 @@ class Application:
                 self.state_saver_task.cancel()
                 try:
                     await self.state_saver_task
+                except asyncio.CancelledError:
+                    pass
+        
+        if self.browser_restart_task:
+            logger.info("⏳ Stopping periodic browser restart...")
+            try:
+                await asyncio.wait_for(self.browser_restart_task, timeout=5.0)
+            except asyncio.TimeoutError:
+                logger.warning("⚠️ Browser restart task timeout, cancelling...")
+                self.browser_restart_task.cancel()
+                try:
+                    await self.browser_restart_task
                 except asyncio.CancelledError:
                     pass
         

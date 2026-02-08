@@ -47,6 +47,7 @@ class Price(BaseModel):
     """Price model"""
     option: ProductOption
     price: int
+    reports_amount: int
     
     class Config:
         from_attributes = True
@@ -58,19 +59,20 @@ class PaymentStatus(str, Enum):
     PENDING = "PENDING"
     SUCCESS = "SUCCESS"
     FAILED = "FAILED"
+    CANCELED = "CANCELED"  # Payment canceled or expired
 
 
 class Payment(BaseModel):
     """Payment model"""
     id: int
     user_id: int
-    reports_amount: int
     total_price: int
     option: ProductOption
     status: PaymentStatus
-    telegram_payment_charge_id: Optional[str] = None
-    provider_payment_charge_id: Optional[str] = None
+    external_invoice_id: Optional[str] = None  # YooKassa order_id (UUID)
+    confirmation_url: Optional[str] = None  # YooKassa payment link
     created_at: datetime
+    updated_at: Optional[datetime] = None  # Updated when status changes
     
     class Config:
         from_attributes = True
@@ -79,6 +81,30 @@ class Payment(BaseModel):
 class CreatePaymentDTO(BaseModel):
     """DTO for creating a new payment"""
     user_id: int
-    reports_amount: int
     total_price: int
     option: ProductOption
+
+
+class ReportState(str, Enum):
+    """Report state types"""
+    NEW = "NEW"
+    GENERATED = "GENERATED"
+
+
+class Report(BaseModel):
+    """Report model"""
+    id: int
+    user_id: int
+    articles: str
+    state: ReportState
+    created_at: datetime
+    updated_at: Optional[datetime] = None
+    
+    class Config:
+        from_attributes = True
+
+
+class CreateReportDTO(BaseModel):
+    """DTO for creating a new report"""
+    user_id: int
+    articles: str
