@@ -114,7 +114,9 @@ class YookassaClient:
                             "currency": "RUB"
                         },
                         "vat_code": 1,  # 1 = No VAT (for IP on simplified tax system - УСН)
-                        "quantity": 1
+                        "quantity": "1",  # MUST be string in format "1" or "1.00"
+                        "payment_mode": "full_payment",  # Required in production
+                        "payment_subject": "service"  # Required in production: service for digital goods
                     }
                 ]
             }
