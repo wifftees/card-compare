@@ -6,7 +6,8 @@ from .client import get_supabase
 from .models import (
     User, CreateUserDTO, UpdateBalanceDTO, FeatureFlag,
     Payment, CreatePaymentDTO, PaymentStatus, Price, ProductOption,
-    Report, CreateReportDTO, ReportState
+    Report, CreateReportDTO, ReportState,
+    Event, CreateEventDTO, EventType
 )
 
 logger = logging.getLogger(__name__)
@@ -89,6 +90,57 @@ async def update_balance(user_id: int, amount: int) -> Optional[User]:
         return None
     except Exception as e:
         logger.error(f"Error updating balance for user {user_id}: {e}")
+        return None
+
+
+async def update_last_active_at(user_id: int) -> Optional[User]:
+    """Update user's last_active_at timestamp"""
+    try:
+        supabase = get_supabase()
+        response = supabase.table("users").update({
+            "last_active_at": datetime.utcnow().isoformat()
+        }).eq("id", user_id).execute()
+        
+        if response.data and len(response.data) > 0:
+            logger.info(f"✅ Updated last_active_at for user {user_id}")
+            return User(**response.data[0])
+        return None
+    except Exception as e:
+        logger.error(f"Error updating last_active_at for user {user_id}: {e}")
+        return None
+
+
+# Event tracking functions
+
+async def create_event(data: CreateEventDTO) -> Optional[Event]:
+    """
+    Create a new event and update user's last_active_at.
+    Uses admin client to bypass RLS policies.
+    """
+    try:
+        from database.client import get_supabase_admin
+        
+        # Use admin client to bypass RLS for server-side event creation
+        supabase = get_supabase_admin()
+        event_data = {
+            "user_id": data.user_id,
+            "event_type": data.event_type.value,
+            "timestamp": datetime.utcnow().isoformat(),
+        }
+        
+        response = supabase.table("events").insert(event_data).execute()
+        
+        if response.data and len(response.data) > 0:
+            event = Event(**response.data[0])
+            logger.info(f"✅ Created event {event.id} for user {data.user_id}: {data.event_type.value}")
+            
+            # Update user's last_active_at
+            await update_last_active_at(data.user_id)
+            
+            return event
+        return None
+    except Exception as e:
+        logger.error(f"Error creating event for user {data.user_id}: {e}", exc_info=True)
         return None
 
 

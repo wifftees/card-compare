@@ -112,7 +112,8 @@ class PaymentService:
             yookassa_response = await self.yookassa_client.create_payment(
                 amount=float(price_config.price),
                 order_id=order_id,
-                description=description
+                description=description,
+                user_id=user_id
             )
             
             # Extract confirmation_url

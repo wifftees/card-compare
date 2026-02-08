@@ -9,7 +9,8 @@ from aiogram.types import (
 )
 from aiogram.fsm.context import FSMContext
 
-from database.models import User, ProductOption
+from database.models import User, ProductOption, EventType, CreateEventDTO
+from database.queries import create_event
 from bot.states import RefillBalanceStates
 from bot.utils import LoadingSticker
 from payment.payment_service import PaymentService
@@ -33,6 +34,9 @@ async def _show_balance_text(user: User, keyboard: InlineKeyboardMarkup) -> tupl
 async def show_balance_callback(callback: CallbackQuery, user: User):
     """Show user balance and refill options from inline button"""
     logger.info(f"User {user.id} requested balance via callback")
+    
+    # Track CLICK_BALANCE event
+    await create_event(CreateEventDTO(user_id=user.id, event_type=EventType.CLICK_BALANCE))
     
     await callback.answer()
     
@@ -137,6 +141,9 @@ async def buy_single_callback(callback: CallbackQuery, user: User, state: FSMCon
     """Handle buy single report button - generate YooKassa payment link"""
     logger.info(f"💳 [PAYMENT] User {user.id} selected SINGLE option")
     
+    # Track CLICK_SINGLE event
+    await create_event(CreateEventDTO(user_id=user.id, event_type=EventType.CLICK_SINGLE))
+    
     await callback.answer()
     
     async with LoadingSticker(callback.message, callback.bot):
@@ -163,7 +170,7 @@ async def buy_single_callback(callback: CallbackQuery, user: User, state: FSMCon
             # Create keyboard with payment link
             keyboard = InlineKeyboardMarkup(inline_keyboard=[
                 [InlineKeyboardButton(text="💳 Оплатить", url=confirmation_url)],
-                [InlineKeyboardButton(text="❌ Отменить", callback_data="cancel_refill")]
+                [InlineKeyboardButton(text="❌ Отменить", callback_data="cancel_payment")]
             ])
             
             payment_text = f"""
@@ -175,6 +182,7 @@ async def buy_single_callback(callback: CallbackQuery, user: User, state: FSMCon
 Нажмите на кнопку ниже для перехода к оплате.
 После успешной оплаты баланс будет автоматически пополнен.
 """
+            
         
         except Exception as e:
             logger.error(f"❌ [PAYMENT] Error generating payment link: {e}", exc_info=True)
@@ -191,6 +199,9 @@ async def buy_single_callback(callback: CallbackQuery, user: User, state: FSMCon
 async def buy_packet_callback(callback: CallbackQuery, user: User, state: FSMContext):
     """Handle buy packet button - generate YooKassa payment link"""
     logger.info(f"💳 [PAYMENT] User {user.id} selected PACKET option")
+    
+    # Track CLICK_PACKET event
+    await create_event(CreateEventDTO(user_id=user.id, event_type=EventType.CLICK_PACKET))
     
     await callback.answer()
     
@@ -218,7 +229,7 @@ async def buy_packet_callback(callback: CallbackQuery, user: User, state: FSMCon
             # Create keyboard with payment link
             keyboard = InlineKeyboardMarkup(inline_keyboard=[
                 [InlineKeyboardButton(text="💳 Оплатить", url=confirmation_url)],
-                [InlineKeyboardButton(text="❌ Отменить", callback_data="cancel_refill")]
+                [InlineKeyboardButton(text="❌ Отменить", callback_data="cancel_payment")]
             ])
             
             payment_text = f"""
@@ -230,6 +241,8 @@ async def buy_packet_callback(callback: CallbackQuery, user: User, state: FSMCon
 Нажмите на кнопку ниже для перехода к оплате.
 После успешной оплаты баланс будет автоматически пополнен.
 """
+            
+
         
         except Exception as e:
             logger.error(f"❌ [PAYMENT] Error generating payment link: {e}", exc_info=True)
@@ -248,7 +261,25 @@ async def cancel_refill_callback(callback: CallbackQuery, state: FSMContext):
     user_id = callback.from_user.id
     logger.info(f"❌ [REFILL] User {user_id} cancelled refill process")
     
+    # Track CLICK_CANCEL_BALANCE event
+    await create_event(CreateEventDTO(user_id=user_id, event_type=EventType.CLICK_CANCEL_BALANCE))
+    
     await state.clear()
     await callback.answer()
     await callback.message.delete()
     logger.info(f"✅ [REFILL] Refill process cancelled and state cleared for user {user_id}")
+
+
+@router.callback_query(F.data == "cancel_payment")
+async def cancel_payment_callback(callback: CallbackQuery, state: FSMContext):
+    """Handle cancel payment button click (after payment link is shown)"""
+    user_id = callback.from_user.id
+    logger.info(f"❌ [PAYMENT] User {user_id} cancelled payment process")
+    
+    # Track CLICK_CANCEL_PAYMENT event
+    await create_event(CreateEventDTO(user_id=user_id, event_type=EventType.CLICK_CANCEL_PAYMENT))
+    
+    await state.clear()
+    await callback.answer()
+    await callback.message.delete()
+    logger.info(f"✅ [PAYMENT] Payment process cancelled and state cleared for user {user_id}")

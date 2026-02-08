@@ -4,7 +4,8 @@ from aiogram import Router
 from aiogram.filters import CommandStart
 from aiogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton
 
-from database.models import User
+from database.models import User, EventType, CreateEventDTO
+from database.queries import create_event
 
 logger = logging.getLogger(__name__)
 
@@ -15,6 +16,9 @@ router = Router()
 async def cmd_start(message: Message, user: User):
     """Handle /start command"""
     logger.info(f"User {user.id} started the bot")
+    
+    # Track CLICK_START event
+    await create_event(CreateEventDTO(user_id=user.id, event_type=EventType.CLICK_START))
     
     welcome_text = f"""
 👋 Привет, {message.from_user.first_name}!

@@ -10,8 +10,8 @@ from aiogram.types import (
     InlineKeyboardButton
 )
 
-from database.models import User, CreateReportDTO
-from database.queries import create_report
+from database.models import User, CreateReportDTO, EventType, CreateEventDTO
+from database.queries import create_report, create_event
 from bot.queue import ReportQueue, ReportTask
 from bot.states import CompareCardsStates
 from bot.utils import send_loading_sticker
@@ -43,6 +43,9 @@ async def request_compare_cards_callback(callback: CallbackQuery, user: User, st
     """Handle compare cards inline button - start comparison flow"""
     logger.info(f"User {user.id} clicked compare cards button via callback")
     
+    # Track CLICK_COMPARE event
+    await create_event(CreateEventDTO(user_id=user.id, event_type=EventType.CLICK_COMPARE))
+    
     await callback.answer()
     
     # Set state to waiting for articles
@@ -61,6 +64,9 @@ async def cancel_compare_callback(callback: CallbackQuery, state: FSMContext):
     """Handle cancel compare button click"""
     user_id = callback.from_user.id
     logger.info(f"❌ [COMPARE] User {user_id} cancelled compare process")
+    
+    # Track CLICK_CANCEL_COMPARE event
+    await create_event(CreateEventDTO(user_id=user_id, event_type=EventType.CLICK_CANCEL_COMPARE))
     
     await state.clear()
     await callback.answer()
@@ -121,6 +127,9 @@ async def process_articles(message: Message, user: User, report_queue: ReportQue
             "💡 Пример: <code>111,222,333,444,555</code>"
         )
         return
+    
+    # Track ENTER_ARTICLES event
+    await create_event(CreateEventDTO(user_id=user.id, event_type=EventType.ENTER_ARTICLES))
     
     # Send info message
     articles_text = ", ".join(str(a) for a in articles)

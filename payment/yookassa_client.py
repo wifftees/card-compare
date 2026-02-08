@@ -63,7 +63,8 @@ class YookassaClient:
         self,
         amount: float,
         order_id: str,
-        description: str
+        description: str,
+        user_id: int
     ) -> Dict[str, Any]:
         """
         Create payment in YooKassa
@@ -72,6 +73,7 @@ class YookassaClient:
             amount: Payment amount in rubles (e.g., 300.00)
             order_id: Unique order ID (UUID) for metadata
             description: Payment description
+            user_id: User ID for metadata
             
         Returns:
             Dict with payment data including confirmation_url
@@ -92,7 +94,8 @@ class YookassaClient:
             "locale": "ru_RU",
             "expires_at": expires_at,
             "metadata": {
-                "order_id": order_id  # Critical: used to identify payment in webhook
+                "order_id": order_id,  # Critical: used to identify payment in webhook
+                "user_id": str(user_id)  # User ID for event tracking and analytics
             },
             "confirmation": {
                 "type": "redirect",

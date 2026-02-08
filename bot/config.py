@@ -17,7 +17,8 @@ class BotSettings(BaseSettings):
     
     # Supabase
     supabase_url: str = ""
-    supabase_key: str = ""
+    supabase_key: str = ""  # Anon/public key for client-side operations
+    supabase_service_key: str = ""  # Service role key for server-side operations (bypasses RLS)
     
     # Wildberries
     wb_phone: str = ""

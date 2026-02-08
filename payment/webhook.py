@@ -3,6 +3,8 @@ import logging
 from typing import Dict, Any
 
 from payment.payment_service import PaymentService
+from database.queries import create_event
+from database.models import EventType, CreateEventDTO
 
 logger = logging.getLogger(__name__)
 
@@ -46,19 +48,31 @@ async def handle_yookassa_webhook(
         # Step 1: Check event type
         event = data.get("event")
         
-        # Step 2: Extract order_id from metadata
+        # Step 2: Extract order_id and user_id from metadata
         obj = data.get("object", {})
         metadata = obj.get("metadata", {})
         order_id = metadata.get("order_id")
+        user_id_str = metadata.get("user_id")
         
         if event == "payment.succeeded":
             if not order_id:
                 logger.error("❌ [WEBHOOK] Missing order_id in metadata")
                 return {"status": "ok", "error": "missing_order_id"}
             
-            logger.info(f"🔑 [WEBHOOK] Processing payment.succeeded: order_id={order_id}")
+            if not user_id_str:
+                logger.error("❌ [WEBHOOK] Missing user_id in metadata")
+                return {"status": "ok", "error": "missing_user_id"}
+            
+            try:
+                user_id = int(user_id_str)
+            except (ValueError, TypeError):
+                logger.error(f"❌ [WEBHOOK] Invalid user_id format: {user_id_str}")
+                return {"status": "ok", "error": "invalid_user_id"}
+            
+            logger.info(f"🔑 [WEBHOOK] Processing payment.succeeded: order_id={order_id}, user_id={user_id}")
             
             success = await payment_service.complete_payment(order_id)
+            await create_event(CreateEventDTO(user_id=user_id, event_type=EventType.PAY_FOR_OPTION))
             
             if success:
                 logger.info(f"✅ [WEBHOOK] Payment completed successfully: order_id={order_id}")

@@ -17,6 +17,7 @@ class User(BaseModel):
     username: Optional[str] = None
     created_at: datetime
     reports_balance: int = 0
+    last_active_at: Optional[datetime] = None
     
     class Config:
         from_attributes = True
@@ -26,6 +27,37 @@ class CreateUserDTO(BaseModel):
     """DTO for creating a new user"""
     id: int  # Telegram user_id
     username: Optional[str] = None
+
+
+class EventType(str, Enum):
+    """Event type enumeration"""
+    CLICK_START = "CLICK_START"
+    CLICK_BALANCE = "CLICK_BALANCE"
+    CLICK_COMPARE = "CLICK_COMPARE"
+    ENTER_ARTICLES = "ENTER_ARTICLES"
+    CLICK_SINGLE = "CLICK_SINGLE"
+    CLICK_PACKET = "CLICK_PACKET"
+    CLICK_CANCEL_BALANCE = "CLICK_CANCEL_BALANCE"
+    CLICK_CANCEL_COMPARE = "CLICK_CANCEL_COMPARE"
+    PAY_FOR_OPTION = "PAY_FOR_OPTION"
+    CLICK_CANCEL_PAYMENT = "CLICK_CANCEL_PAYMENT"
+
+
+class Event(BaseModel):
+    """Event model"""
+    id: int
+    user_id: int
+    event_type: EventType
+    timestamp: datetime
+    
+    class Config:
+        from_attributes = True
+
+
+class CreateEventDTO(BaseModel):
+    """DTO for creating a new event"""
+    user_id: int
+    event_type: EventType
 
 
 class UpdateBalanceDTO(BaseModel):
