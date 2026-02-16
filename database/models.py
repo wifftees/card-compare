@@ -18,6 +18,7 @@ class User(BaseModel):
     created_at: datetime
     reports_balance: int = 0
     last_active_at: Optional[datetime] = None
+    invited_by: Optional[int] = None  # ID of user who invited this user
     
     class Config:
         from_attributes = True
@@ -27,6 +28,7 @@ class CreateUserDTO(BaseModel):
     """DTO for creating a new user"""
     id: int  # Telegram user_id
     username: Optional[str] = None
+    invited_by: Optional[int] = None  # ID of user who invited this user
 
 
 class EventType(str, Enum):

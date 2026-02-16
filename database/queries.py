@@ -35,13 +35,15 @@ async def create_user(data: CreateUserDTO) -> Optional[User]:
             "id": data.id,
             "username": data.username,
             "created_at": datetime.utcnow().isoformat(),
-            "reports_balance": 1
+            "reports_balance": 1,
+            "invited_by": data.invited_by
         }
         
         response = supabase.table("users").insert(user_data).execute()
         
         if response.data and len(response.data) > 0:
-            logger.info(f"✅ Created user {data.id}")
+            invited_by_info = f" (invited by {data.invited_by})" if data.invited_by else ""
+            logger.info(f"✅ Created user {data.id}{invited_by_info}")
             return User(**response.data[0])
         return None
     except Exception as e:
@@ -107,6 +109,47 @@ async def update_last_active_at(user_id: int) -> Optional[User]:
         return None
     except Exception as e:
         logger.error(f"Error updating last_active_at for user {user_id}: {e}")
+        return None
+
+
+async def update_user_invited_by(user_id: int, invited_by: int) -> Optional[User]:
+    """
+    Update user's invited_by field.
+    Only updates if the field is currently NULL (not already set).
+    
+    Args:
+        user_id: ID of the user to update
+        invited_by: ID of the user who invited them
+        
+    Returns:
+        Updated User object or None if update failed
+    """
+    try:
+        supabase = get_supabase()
+        
+        # First check if invited_by is already set
+        user = await get_user(user_id)
+        if not user:
+            logger.error(f"User {user_id} not found for invited_by update")
+            return None
+        
+        if user.invited_by is not None:
+            logger.info(f"User {user_id} already has invited_by={user.invited_by}, skipping update")
+            return user
+        
+        # Update only if invited_by is NULL
+        response = supabase.table("users").update({
+            "invited_by": invited_by
+        }).eq("id", user_id).is_("invited_by", "null").execute()
+        
+        if response.data and len(response.data) > 0:
+            logger.info(f"✅ Updated invited_by for user {user_id}: invited by {invited_by}")
+            return User(**response.data[0])
+        
+        logger.warning(f"Failed to update invited_by for user {user_id} (may already be set)")
+        return user
+    except Exception as e:
+        logger.error(f"Error updating invited_by for user {user_id}: {e}")
         return None
 
 
