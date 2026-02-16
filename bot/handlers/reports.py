@@ -128,6 +128,17 @@ async def process_articles(message: Message, user: User, report_queue: ReportQue
         )
         return
     
+    # Check for duplicates
+    duplicates = [a for a in set(articles) if articles.count(a) > 1]
+    if duplicates:
+        duplicates_text = ", ".join(str(a) for a in duplicates)
+        await message.answer(
+            "❌ <b>Найдены повторяющиеся артикулы</b>\n\n"
+            f"🔁 Дубликаты: <code>{duplicates_text}</code>\n\n"
+            "Каждый артикул должен быть уникальным."
+        )
+        return
+    
     # Track ENTER_ARTICLES event
     await create_event(CreateEventDTO(user_id=user.id, event_type=EventType.ENTER_ARTICLES))
     
