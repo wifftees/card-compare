@@ -4,9 +4,10 @@ import logging
 from playwright.async_api import async_playwright, Browser, BrowserContext, Page, TimeoutError as PlaywrightTimeoutError
 
 from bot.config import settings
+from bot.utils.status import update_status_message
 from database.queries import get_compare_cards_mock
 from .auth_service import WBAuthService
-from .scraper_service import WBScraperService
+from .scraper_service import WBScraperService, StatusCallback
 from .config import WBConfig
 from .state_storage import StateStorage
 
@@ -131,21 +132,54 @@ class WBClient:
         except Exception as e:
             logger.error(f'❌ Error verifying locale: {e}')
     
-    async def compare_cards(self, articles: list[int]):
+    def _create_status_callback(
+        self,
+        chat_id: int | None,
+        status_message_id: int | None,
+    ) -> StatusCallback | None:
+        """Create a status update callback for scraper service."""
+        bot = self._bot
+        if not bot or not chat_id or not status_message_id:
+            return None
+
+        async def on_status(stage: int) -> bool:
+            return await update_status_message(bot, chat_id, status_message_id, stage)
+
+        return on_status
+
+    async def compare_cards(
+        self,
+        articles: list[int],
+        chat_id: int | None = None,
+        status_message_id: int | None = None,
+    ):
         """Compare cards by article numbers"""
+        on_status = self._create_status_callback(chat_id, status_message_id)
         use_mock = await get_compare_cards_mock()
         if use_mock:
             logger.info('🎭 COMPARE_CARDS_MOCK is enabled, using fake_compare_cards')
-            return await self._scraper_service.fake_compare_cards(articles)
-        return await self._scraper_service.compare_cards(articles)
+            return await self._scraper_service.fake_compare_cards(articles, on_status=on_status)
+        return await self._scraper_service.compare_cards(articles, on_status=on_status)
     
-    async def process_filters(self) -> tuple[int, int]:
+    async def process_filters(
+        self,
+        chat_id: int | None = None,
+        status_message_id: int | None = None,
+    ) -> tuple[int, int]:
         """Process filters and create reports"""
-        return await self._scraper_service.process_filters()
+        on_status = self._create_status_callback(chat_id, status_message_id)
+        return await self._scraper_service.process_filters(on_status=on_status)
     
-    async def download_documents(self, unique_id: int, expected_count: int) -> str:
+    async def download_documents(
+        self,
+        unique_id: int,
+        expected_count: int,
+        chat_id: int | None = None,
+        status_message_id: int | None = None,
+    ) -> str:
         """Download created documents and return path to merged ZIP"""
-        return await self._scraper_service.download_documents(unique_id, expected_count)
+        on_status = self._create_status_callback(chat_id, status_message_id)
+        return await self._scraper_service.download_documents(unique_id, expected_count, on_status=on_status)
     
     async def save_current_state(self):
         """Save current browser state to file"""

@@ -14,7 +14,7 @@ from database.models import User, CreateReportDTO, EventType, CreateEventDTO
 from database.queries import create_report, create_event
 from bot.queue import ReportQueue, ReportTask
 from bot.states import CompareCardsStates
-from bot.utils import send_loading_sticker
+from bot.utils import send_status_message
 
 logger = logging.getLogger(__name__)
 
@@ -27,12 +27,12 @@ async def _show_compare_cards_prompt(keyboard: InlineKeyboardMarkup) -> tuple[st
 
 Отправьте артикулы товаров списком через запятую.
 
-📋 <b>Правила:</b>
+<b>Правила:</b>
 • Минимум 2 артикула
 • Максимум 5 артикулов
 • Артикулы через запятую
 
-💡 <b>Примеры:</b>
+<b>Примеры:</b>
 <code>123456789,987654321</code>
 <code>111111111,222222222,333333333</code>"""
     return text, keyboard
@@ -148,10 +148,9 @@ async def process_articles(message: Message, user: User, report_queue: ReportQue
     
     await message.answer(
         f"✅ <b>Задача добавлена в очередь</b>\n\n"
-        f"📦 Артикулы: <code>{articles_text}</code>\n"
-        f"📊 Позиция в очереди: {queue_size}\n\n"
-        f"⏳ Ожидайте, отчет будет готов через несколько минут...\n"
-        f"💰 После генерации будет списано: 1 отчет"
+        f"Артикулы: <code>{articles_text}</code>\n"
+        f"Позиция в очереди: {queue_size}\n\n"
+        f"Ожидайте, отчет будет готов через несколько минут..."
     )
     
     # Create report record in DB with state NEW
@@ -165,16 +164,17 @@ async def process_articles(message: Message, user: User, report_queue: ReportQue
     else:
         logger.warning(f"⚠️ Failed to create report record for user {user.id}")
     
-    # Send animated loading sticker
-    sticker_msg_id = await send_loading_sticker(message)
+    # Send status message (stage 1)
+    status_msg_id = await send_status_message(message)
     
-    # Create task with sticker message ID and report ID
+    # Create task with status message ID and report ID
     task = ReportTask.create(
         user_id=user.id,
         chat_id=message.chat.id,
         articles=articles,
         report_id=report_id,
-        loading_message_id=sticker_msg_id,
+        loading_message_id=status_msg_id,
+        sticker_message_id=None,
     )
     
     # Add to queue

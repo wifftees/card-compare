@@ -17,6 +17,7 @@ class ReportTask:
     articles: list[int]
     report_id: Optional[int] = None
     loading_message_id: Optional[int] = None
+    sticker_message_id: Optional[int] = None
     
     @classmethod
     def create(
@@ -26,6 +27,7 @@ class ReportTask:
         articles: list[int],
         report_id: Optional[int] = None,
         loading_message_id: Optional[int] = None,
+        sticker_message_id: Optional[int] = None,
     ):
         """Create new task with unique ID"""
         return cls(
@@ -35,6 +37,7 @@ class ReportTask:
             articles=articles,
             report_id=report_id,
             loading_message_id=loading_message_id,
+            sticker_message_id=sticker_message_id,
         )
 
 
@@ -49,6 +52,7 @@ class ReportResult:
     error: Optional[str] = None
     report_id: Optional[int] = None
     loading_message_id: Optional[int] = None
+    sticker_message_id: Optional[int] = None
 
 
 class ReportQueue:

@@ -3,9 +3,24 @@ import os
 import logging
 import shutil
 import zipfile
+from typing import Callable, Awaitable
+
 from playwright.async_api import Page, TimeoutError as PlaywrightTimeoutError
 
 logger = logging.getLogger(__name__)
+
+# Callback type: accepts a stage number, returns True if update succeeded
+StatusCallback = Callable[[int], Awaitable[bool]]
+
+
+async def _notify(on_status: StatusCallback | None, stage: int) -> None:
+    """Safely invoke the status callback, swallowing errors."""
+    if on_status is None:
+        return
+    try:
+        await on_status(stage)
+    except Exception as e:
+        logger.warning(f"⚠️  Status callback failed for stage {stage}: {e}")
 
 
 def generate_unique_id(*numbers):
@@ -36,8 +51,19 @@ class WBScraperService:
         self._page = page
         self._downloads_path = downloads_path
 
-    async def fake_compare_cards(self, items: list[int]):
-        """Mock function to simulate card comparison through table"""
+    async def fake_compare_cards(
+        self,
+        items: list[int],
+        on_status: StatusCallback | None = None,
+    ):
+        """
+        Mock function to simulate card comparison through table.
+
+        Status stages used: 1 -> 2 -> 3 -> 4
+        """
+        # --- Stage 1: Открываем страницу сравнения ---
+        await _notify(on_status, 1)
+
         logger.info('🌐 Navigating to page...')
         await self._page.goto(
             'https://seller.wildberries.ru/platform-analytics/cards-comparison',
@@ -54,6 +80,9 @@ class WBScraperService:
         except PlaywrightTimeoutError:
             logger.warning('⚠️  Network idle timeout after navigation')
         
+        # --- Stage 2: Вводим артикулы товаров ---
+        await _notify(on_status, 2)
+
         logger.info(f'🔍 Starting fake_compare_cards for {len(items)} articles...')
         
         # Find div with class starting with Table__container
@@ -69,6 +98,9 @@ class WBScraperService:
         await table.wait_for(state='visible', timeout=15000)
         await self._page.wait_for_timeout(1000)
         logger.info('✅ Table found')
+
+        # --- Stage 3: Проверяем добавленные карточки ---
+        await _notify(on_status, 3)
         
         # Find tbody in table
         logger.info('🔍 Looking for tbody...')
@@ -100,6 +132,9 @@ class WBScraperService:
             logger.info('✅ Click completed via JavaScript')
         
         await self._page.wait_for_timeout(2000)
+
+        # --- Stage 4: Запускаем сравнение карточек ---
+        await _notify(on_status, 4)
         
         # Wait for data to load after click
         logger.info('⏳ Waiting for data to load...')
@@ -119,8 +154,19 @@ class WBScraperService:
         logger.info('✅ fake_compare_cards function completed successfully!')
         return True
 
-    async def compare_cards(self, items: list[int]):
-        """Compare product cards by article numbers"""
+    async def compare_cards(
+        self,
+        items: list[int],
+        on_status: StatusCallback | None = None,
+    ):
+        """
+        Compare product cards by article numbers.
+
+        Status stages used: 1 -> 2 -> 3 -> 4
+        """
+        # --- Stage 1: Открываем страницу сравнения ---
+        await _notify(on_status, 1)
+
         logger.info(f'🔍 Starting card comparison for {len(items)} articles...')
 
         logger.info('🌐 Navigating to page...')
@@ -152,6 +198,9 @@ class WBScraperService:
         
         # Wait for form to fully load
         await self._page.wait_for_timeout(1000)
+
+        # --- Stage 2: Вводим артикулы товаров ---
+        await _notify(on_status, 2)
         
         # For each article
         for idx, article in enumerate(items):
@@ -187,7 +236,7 @@ class WBScraperService:
             await recommended_cards_list.wait_for(state='visible', timeout=15000)
             await self._page.wait_for_timeout(1000)
             logger.info('  ✅ Container found')
-            
+
             # Verify correct article was added
             logger.info('  🔍 Verifying added article...')
             nm_cards = recommended_cards_list.locator('[class^="Nm-card__description"]')
@@ -259,6 +308,9 @@ class WBScraperService:
             error_msg = f'Error: Expected at least 2 buttons, found: {buttons_count}'
             logger.error(f'❌ {error_msg}')
             raise ValueError(error_msg)
+
+        # --- Stage 4: Запускаем сравнение карточек ---
+        await _notify(on_status, 4)
         
         # Wait for comparison data to load
         logger.info('⏳ Waiting for comparison data to load...')
@@ -277,8 +329,18 @@ class WBScraperService:
         
         logger.info('✅ compare_cards function completed successfully!')
     
-    async def process_filters(self) -> tuple[int, int]:
-        """Process filters and create reports"""
+    async def process_filters(
+        self,
+        on_status: StatusCallback | None = None,
+    ) -> tuple[int, int]:
+        """
+        Process filters and create reports.
+
+        Status stages used: 5 -> 6 -> 7 -> 8 -> 9
+        """
+        # --- Stage 5: Применяем фильтры отчетов ---
+        await _notify(on_status, 5)
+
         logger.info('🎯 Starting filter processing...')
         
         # Wait for page to stabilize after compare_cards
@@ -315,6 +377,10 @@ class WBScraperService:
         
         # Iterate over each period button
         for period_idx in range(period_count):
+            # Update status for current period (stages 6-9: Сегодня, Неделя, Месяц, Квартал)
+            period_stage = 6 + period_idx
+            await _notify(on_status, period_stage)
+            
             # Get button text for logging
             period_button = period_buttons.nth(period_idx)
             period_text = await period_button.inner_text()
@@ -486,8 +552,20 @@ class WBScraperService:
         
         return merged_zip_path
     
-    async def download_documents(self, unique_id: int, expected_count: int) -> str:
-        """Download created documents and return path to merged ZIP"""
+    async def download_documents(
+        self,
+        unique_id: int,
+        expected_count: int,
+        on_status: StatusCallback | None = None,
+    ) -> str:
+        """
+        Download created documents and return path to merged ZIP.
+
+        Status stages used: 10 -> 11 -> 12 -> 13
+        """
+        # --- Stage 10: Открываем менеджер загрузок ---
+        await _notify(on_status, 10)
+
         logger.info(f'📥 Starting document download (expected: {expected_count})...')
         
         # Create downloads folder if it doesn't exist
@@ -511,6 +589,9 @@ class WBScraperService:
         await show_list_button.click()
         await self._page.wait_for_timeout(3000)
         logger.info('✅ Downloads list opened')
+
+        # --- Stage 11: Ожидаем готовности документов ---
+        await _notify(on_status, 11)
         
         # Wait for full list loading
         logger.info('⏳ Waiting for full document list loading...')
@@ -528,6 +609,9 @@ class WBScraperService:
         
         buttons_count = await chip_buttons.count()
         logger.info(f'📊 Found buttons: {buttons_count}')
+
+        # --- Stage 12: Скачиваем документы ---
+        await _notify(on_status, 12)
         
         # Determine how many files to download
         files_to_download = min(buttons_count, expected_count)
@@ -581,6 +665,9 @@ class WBScraperService:
                 logger.debug(f'    📋 Traceback: {traceback.format_exc()}')
         
         logger.info(f'🎉 Download completed! Downloaded documents: {downloaded_count}')
+
+        # --- Stage 13: Упаковываем архив ---
+        await _notify(on_status, 13)
         
         # Merge all downloaded zip archives into one
         if downloaded_files:

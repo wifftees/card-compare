@@ -13,7 +13,7 @@ from bot.config import settings
 from bot.queue import ReportQueue, ReportTask, ReportResult
 from bot.middlewares.user_middleware import UserMiddleware
 from bot.handlers import start, balance, reports, admin, common
-from bot.utils import delete_loading_sticker
+from bot.utils import update_status_message, delete_status_message, delete_loading_sticker
 
 from database.client import SupabaseClient
 from database.queries import update_balance, check_balance, get_wb_use_mock, update_report_state
@@ -47,48 +47,86 @@ class Application:
         self._active_reports_count = 0  # Track active report generation
         self._report_lock: asyncio.Lock | None = None  # Lock for updating count
     
-    async def process_report_real(self, articles: list[int]) -> str:
+    async def process_report_real(
+        self,
+        articles: list[int],
+        chat_id: int,
+        status_message_id: int | None,
+    ) -> str:
         """
         Real report processing using browser automation.
         
+        Stages 1-10 are updated inside the scraper functions themselves.
+        
         Args:
             articles: List of article numbers to compare
+            chat_id: Chat ID for status message updates
+            status_message_id: Message ID of the status message to edit
             
         Returns:
             str: Path to the downloaded report file
         """
         logger.info(f"📦 Comparing {len(articles)} cards: {articles}")
-        await self.wb_client.compare_cards(articles)
+        await self.wb_client.compare_cards(articles, chat_id, status_message_id)
         logger.info("✅ Cards compared successfully")
         
         logger.info("📊 Generating filtered reports...")
-        unique_id, count = await self.wb_client.process_filters()
+        unique_id, count = await self.wb_client.process_filters(chat_id, status_message_id)
         logger.info(f"✅ Filters processed: unique_id={unique_id}, count={count}")
         
         logger.info(f"📥 Downloading {count} documents...")
-        file_path = await self.wb_client.download_documents(unique_id, count)
+        file_path = await self.wb_client.download_documents(unique_id, count, chat_id, status_message_id)
         logger.info(f"✅ Documents downloaded: {file_path}")
         
         return file_path
     
-    async def process_report_mock(self, articles: list[int]) -> str:
+    async def process_report_mock(
+        self,
+        articles: list[int],
+        chat_id: int,
+        status_message_id: int | None,
+    ) -> str:
         """
         Mock report processing returning a static test file.
         
+        Stages 1-4 are handled inside fake_compare_cards.
+        Stages 5-10 are simulated with short sleeps.
+        
         Args:
             articles: List of article numbers (logged but not used)
+            chat_id: Chat ID for status message updates
+            status_message_id: Message ID of the status message to edit
             
         Returns:
             str: Path to the static test report file
         """
         logger.info(f"📦 [MOCK] Comparing {len(articles)} cards: {articles}")
-        logger.info("✅ [MOCK] Cards compared successfully (skipped)")
+        await self.wb_client.compare_cards(articles, chat_id, status_message_id)
+        logger.info("✅ [MOCK] Cards compared successfully")
         
+        # Simulate process_filters (stages 5-9)
+        await update_status_message(self.bot, chat_id, status_message_id, stage=5)
         logger.info("📊 [MOCK] Generating filtered reports (skipped)...")
-        await asyncio.sleep(1)  # Simulate processing
+        await asyncio.sleep(1)
+        await update_status_message(self.bot, chat_id, status_message_id, stage=6)
+        await asyncio.sleep(1)
+        await update_status_message(self.bot, chat_id, status_message_id, stage=7)
+        await asyncio.sleep(1)
+        await update_status_message(self.bot, chat_id, status_message_id, stage=8)
+        await asyncio.sleep(1)
+        await update_status_message(self.bot, chat_id, status_message_id, stage=9)
+        await asyncio.sleep(1)
         
+        # Simulate download_documents (stages 10-13)
+        await update_status_message(self.bot, chat_id, status_message_id, stage=10)
         logger.info("📥 [MOCK] Downloading documents (skipped)...")
-        await asyncio.sleep(1)  # Simulate download
+        await asyncio.sleep(1)
+        await update_status_message(self.bot, chat_id, status_message_id, stage=11)
+        await asyncio.sleep(1)
+        await update_status_message(self.bot, chat_id, status_message_id, stage=12)
+        await asyncio.sleep(1)
+        await update_status_message(self.bot, chat_id, status_message_id, stage=13)
+        await asyncio.sleep(1)
         
         # Return static test file
         file_path = str(Path(__file__).parent / "storage" / "test_report.txt")
@@ -197,10 +235,14 @@ class Application:
                     use_mock = await get_wb_use_mock()
                     if use_mock:
                         logger.info("🎭 Using MOCK mode")
-                        file_path = await self.process_report_mock(task.articles)
+                        file_path = await self.process_report_mock(
+                            task.articles, task.chat_id, task.loading_message_id,
+                        )
                     else:
                         logger.info("🌐 Using REAL browser mode")
-                        file_path = await self.process_report_real(task.articles)
+                        file_path = await self.process_report_real(
+                            task.articles, task.chat_id, task.loading_message_id,
+                        )
                     
                     # Create success result
                     result = ReportResult(
@@ -210,7 +252,8 @@ class Application:
                         success=True,
                         file_path=file_path,
                         report_id=task.report_id,
-                        loading_message_id=task.loading_message_id
+                        loading_message_id=task.loading_message_id,
+                        sticker_message_id=task.sticker_message_id,
                     )
                     
                     logger.info(f"✅ Task {task.task_id} completed successfully")
@@ -224,7 +267,8 @@ class Application:
                         success=False,
                         error=str(e),
                         report_id=task.report_id,
-                        loading_message_id=task.loading_message_id
+                        loading_message_id=task.loading_message_id,
+                        sticker_message_id=task.sticker_message_id,
                     )
                 
                 finally:
@@ -265,7 +309,14 @@ class Application:
                     await delete_loading_sticker(
                         self.bot,
                         result.chat_id,
-                        result.loading_message_id
+                        result.sticker_message_id,
+                    )
+                    
+                    # Delete status message if it exists
+                    await delete_status_message(
+                        self.bot,
+                        result.chat_id,
+                        result.loading_message_id,
                     )
                     
                     if result.success:
