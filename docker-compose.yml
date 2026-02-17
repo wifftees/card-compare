@@ -29,6 +29,7 @@ services:
     # Persistent storage для сессии браузера и временных файлов
     volumes:
       - ./storage:/app/storage
+      - ./logs:/app/logs
     
     # Ограничения ресурсов (критично для Playwright)
     deploy:
