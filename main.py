@@ -7,7 +7,7 @@ from pathlib import Path
 from aiogram import Bot, Dispatcher
 from aiogram.client.default import DefaultBotProperties
 from aiogram.fsm.storage.memory import MemoryStorage
-from aiogram.types import FSInputFile
+from aiogram.types import FSInputFile, InlineKeyboardMarkup, InlineKeyboardButton
 
 from bot.config import settings
 from bot.queue import ReportQueue, ReportTask, ReportResult
@@ -350,12 +350,27 @@ class Application:
                         logger.info(f"💰 Deducting balance for user {result.user_id}")
                         await update_balance(result.user_id, -1)
                         
-                        # Send balance info
+                        # Send balance info with menu
                         balance = await check_balance(result.user_id)  # Get current balance
+                        
+                        balance_text = f"💰 <b>Ваш баланс:</b> {balance} отчетов\n\nВыберите действие ниже 👇"
+                        
+                        keyboard = InlineKeyboardMarkup(
+                            inline_keyboard=[
+                                [InlineKeyboardButton(text="🔍 Сравнение карточек", callback_data="compare_cards")],
+                                [
+                                    InlineKeyboardButton(text="💰 Баланс", callback_data="balance"),
+                                    InlineKeyboardButton(text="💬 Поддержка", url="https://t.me/wifftees")
+                                ],
+                                [InlineKeyboardButton(text="🔗 Реферальная ссылка", callback_data="referral_link")],
+                            ]
+                        )
+                        
                         await self.bot.send_message(
-                                chat_id=result.chat_id,
-                                text=f"💰 Осталось отчетов: <b>{balance}</b>"
-                            )
+                            chat_id=result.chat_id,
+                            text=balance_text,
+                            reply_markup=keyboard
+                        )
                     
                     else:
                         # Error occurred
