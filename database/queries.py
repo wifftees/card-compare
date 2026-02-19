@@ -35,7 +35,7 @@ async def create_user(data: CreateUserDTO) -> Optional[User]:
             "id": data.id,
             "username": data.username,
             "created_at": datetime.utcnow().isoformat(),
-            "reports_balance": 1,
+            "reports_balance": 0,
             "invited_by": data.invited_by
         }
         

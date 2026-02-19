@@ -1,5 +1,6 @@
 """Report generation handlers"""
 import logging
+import os
 from aiogram import Router, F
 from aiogram.filters import Command, StateFilter
 from aiogram.fsm.context import FSMContext
@@ -7,7 +8,8 @@ from aiogram.types import (
     Message,
     CallbackQuery,
     InlineKeyboardMarkup,
-    InlineKeyboardButton
+    InlineKeyboardButton,
+    FSInputFile
 )
 
 from database.models import User, CreateReportDTO, EventType, CreateEventDTO
@@ -48,11 +50,26 @@ async def request_compare_cards_callback(callback: CallbackQuery, user: User, st
     
     await callback.answer()
     
+    # Check balance first
+    if user.reports_balance <= 0:
+        keyboard = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="📄 Пример отчета", callback_data="show_example_report")],
+            [InlineKeyboardButton(text="⬅️ Назад", callback_data="cancel_compare")]
+        ])
+        
+        await callback.message.answer(
+            "❌ <b>Недостаточно средств</b>\n\n"
+            f"💰 Ваш баланс: {user.reports_balance} отчетов\n\n"
+            "Чтобы посмотреть пример отчета, нажмите кнопку внизу.",
+            reply_markup=keyboard
+        )
+        return
+    
     # Set state to waiting for articles
     await state.set_state(CompareCardsStates.waiting_for_articles)
     
     keyboard = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="❌ Отменить", callback_data="cancel_compare")]
+        [InlineKeyboardButton(text="⬅️ Назад", callback_data="cancel_compare")]
     ])
     
     text, keyboard = await _show_compare_cards_prompt(keyboard)
@@ -74,20 +91,87 @@ async def cancel_compare_callback(callback: CallbackQuery, state: FSMContext):
     logger.info(f"✅ [COMPARE] Compare process cancelled and state cleared for user {user_id}")
 
 
+@router.callback_query(F.data == "show_example_report")
+async def show_example_report_callback(callback: CallbackQuery):
+    """Handle example report button click"""
+    logger.info(f"User {callback.from_user.id} requested example report")
+    
+    await callback.answer()
+    
+    keyboard = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="🏠 Главное меню", callback_data="back_to_start")]
+        ]
+    )
+    
+    # Path to example report file (mounted from host storage directory)
+    example_file_path = "/app/storage/example_report.zip"
+    
+    # Check if file exists
+    if not os.path.exists(example_file_path):
+        logger.error(f"Example report file not found: {example_file_path}")
+        await callback.message.answer(
+            "❌ <b>Пример отчета временно недоступен</b>\n\n"
+            "Попробуйте позже или обратитесь в поддержку.",
+            reply_markup=keyboard
+        )
+        return
+    
+    try:
+        # Send file
+        logger.info(f"📎 Sending example report to user {callback.from_user.id}")
+        document = FSInputFile(example_file_path)
+        await callback.message.answer_document(
+            document=document,
+            reply_markup=keyboard
+        )
+    except Exception as e:
+        logger.error(f"Failed to send example report: {e}")
+        await callback.message.answer(
+            "❌ <b>Ошибка при отправке примера отчета</b>\n\n"
+            "Попробуйте позже или обратитесь в поддержку.",
+            reply_markup=keyboard
+        )
+
+
+@router.callback_query(F.data == "back_to_start")
+async def back_to_start_callback(callback: CallbackQuery, user: User):
+    """Handle back to start menu button click"""
+    logger.info(f"User {user.id} returned to start menu")
+    
+    await callback.answer()
+    
+    welcome_text = f"""
+👋 Привет, {callback.from_user.first_name}!
+
+Я бот для генерации отчетов Wildberries.
+
+💰 <b>Ваш баланс:</b> {user.reports_balance} отчетов
+
+Выберите действие ниже 👇
+"""
+    
+    keyboard = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="🔍 Сравнение карточек", callback_data="compare_cards")],
+            [
+                InlineKeyboardButton(text="💰 Баланс", callback_data="balance"),
+                InlineKeyboardButton(text="💬 Поддержка", url="https://t.me/wifftees")
+            ],
+            [InlineKeyboardButton(text="🔗 Реферальная ссылка", callback_data="referral_link")],
+        ]
+    )
+    
+    await callback.message.answer(
+        welcome_text,
+        reply_markup=keyboard
+    )
+
+
 @router.message(CompareCardsStates.waiting_for_articles, F.text)
 async def process_articles(message: Message, user: User, report_queue: ReportQueue, state: FSMContext):
     """Process articles from user input"""
     logger.info(f"User {user.id} sent articles: {message.text}")
-    
-    # Check balance
-    if user.reports_balance <= 0:
-        await state.clear()
-        await message.answer(
-            "❌ <b>Недостаточно средств</b>\n\n"
-            f"💰 Ваш баланс: {user.reports_balance} отчетов\n\n"
-            "Пополните баланс для генерации отчетов."
-        )
-        return
     
     # Parse articles - split by comma and remove spaces
     args_text = (message.text or "").strip()

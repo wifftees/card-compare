@@ -144,7 +144,7 @@ async def message_entered(message: Message, state: FSMContext):
 
     keyboard = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="✅ Подтвердить отправку", callback_data="admin_confirm")],
-        [InlineKeyboardButton(text="❌ Отменить", callback_data="admin_cancel")],
+        [InlineKeyboardButton(text="⬅️ Назад", callback_data="admin_cancel")],
     ])
 
     await message.answer(

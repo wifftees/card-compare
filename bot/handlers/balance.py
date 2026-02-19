@@ -69,7 +69,7 @@ async def show_balance_callback(callback: CallbackQuery, user: User):
                 text=f"📦 Пакет ({packet_price.reports_amount} отчетов) - {packet_price.price} ₽", 
                 callback_data="buy_packet"
             )],
-            [InlineKeyboardButton(text="❌ Отменить", callback_data="cancel_refill")]
+            [InlineKeyboardButton(text="⬅️ Назад", callback_data="cancel_refill")]
         ])
         
         balance_text = f"""
@@ -119,7 +119,7 @@ async def refill_balance_callback(callback: CallbackQuery, user: User, state: FS
                 text=f"📦 Пакет ({packet_price.reports_amount} отчетов) - {packet_price.price} ₽", 
                 callback_data="buy_packet"
             )],
-            [InlineKeyboardButton(text="❌ Отменить", callback_data="cancel_refill")]
+            [InlineKeyboardButton(text="⬅️ Назад", callback_data="cancel_refill")]
         ])
         
         refill_text = f"""
@@ -170,7 +170,7 @@ async def buy_single_callback(callback: CallbackQuery, user: User, state: FSMCon
             # Create keyboard with payment link
             keyboard = InlineKeyboardMarkup(inline_keyboard=[
                 [InlineKeyboardButton(text="💳 Оплатить", url=confirmation_url)],
-                [InlineKeyboardButton(text="❌ Отменить", callback_data="cancel_payment")]
+                [InlineKeyboardButton(text="⬅️ Назад", callback_data="cancel_payment")]
             ])
             
             payment_text = f"""
@@ -229,7 +229,7 @@ async def buy_packet_callback(callback: CallbackQuery, user: User, state: FSMCon
             # Create keyboard with payment link
             keyboard = InlineKeyboardMarkup(inline_keyboard=[
                 [InlineKeyboardButton(text="💳 Оплатить", url=confirmation_url)],
-                [InlineKeyboardButton(text="❌ Отменить", callback_data="cancel_payment")]
+                [InlineKeyboardButton(text="⬅️ Назад", callback_data="cancel_payment")]
             ])
             
             payment_text = f"""

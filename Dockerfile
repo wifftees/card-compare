@@ -51,7 +51,7 @@ RUN --mount=type=cache,target=/root/.cache/pip \
 COPY . .
 
 # Создание директорий для storage
-RUN mkdir -p storage/downloads
+RUN mkdir -p storage/downloads storage/examples
 
 # Переменные окружения
 ENV PYTHONUNBUFFERED=1
