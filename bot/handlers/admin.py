@@ -14,7 +14,7 @@ from aiogram.types import (
 
 from bot.config import settings
 from bot.states import AdminStates
-from database.models import EventType
+from database.models import EventType, User
 from database.queries import (
     get_users_no_reports_no_payments,
     get_users_one_report_no_payments,
@@ -448,8 +448,12 @@ async def back_to_broadcast(callback: CallbackQuery, state: FSMContext):
 
 
 @router.callback_query(F.data == "admin_exit")
-async def exit_admin(callback: CallbackQuery, state: FSMContext):
-    """Exit admin panel – clear state."""
+async def exit_admin(callback: CallbackQuery, state: FSMContext, user: User):
+    """Exit admin panel – clear state and show start menu."""
+    from bot.handlers.start import back_to_start_callback
+    
     await state.clear()
     await callback.message.delete()
     logger.info(f"[ADMIN] User {callback.from_user.id} exited admin panel")
+    
+    await back_to_start_callback(callback, user)

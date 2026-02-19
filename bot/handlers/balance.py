@@ -69,7 +69,7 @@ async def show_balance_callback(callback: CallbackQuery, user: User):
                 text=f"📦 Пакет ({packet_price.reports_amount} отчетов) - {packet_price.price} ₽", 
                 callback_data="buy_packet"
             )],
-            [InlineKeyboardButton(text="⬅️ Назад", callback_data="cancel_refill")]
+            [InlineKeyboardButton(text="🏠 Главное меню", callback_data="back_to_start")]
         ])
         
         balance_text = f"""
@@ -81,60 +81,6 @@ async def show_balance_callback(callback: CallbackQuery, user: User):
 """
     
     await callback.message.answer(balance_text, reply_markup=keyboard)
-
-
-@router.callback_query(F.data == "refill_balance")
-async def refill_balance_callback(callback: CallbackQuery, user: User, state: FSMContext):
-    """Handle refill balance button click - show pricing options"""
-    logger.info(f"User {user.id} started refill balance process")
-    
-    await callback.answer()
-    
-    async with LoadingSticker(callback.message, callback.bot):
-        # Get prices from database
-        from database.queries import get_price_by_option
-        
-        single_price = await get_price_by_option(ProductOption.SINGLE)
-        packet_price = await get_price_by_option(ProductOption.PACKET)
-        
-        if single_price is None or packet_price is None:
-            logger.error(f"❌ Failed to fetch prices from database for user {user.id}")
-            await callback.message.answer(
-                "❌ Ошибка загрузки цен. Попробуйте позже."
-            )
-            return
-        
-        logger.info(
-            f"💰 Loaded prices for user {user.id}: "
-            f"SINGLE={single_price.price} RUB, PACKET={packet_price.price} RUB"
-        )
-        
-        # Create keyboard with pricing options
-        keyboard = InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton(
-                text=f"📄 Один отчет - {single_price.price} ₽", 
-                callback_data="buy_single"
-            )],
-            [InlineKeyboardButton(
-                text=f"📦 Пакет ({packet_price.reports_amount} отчетов) - {packet_price.price} ₽", 
-                callback_data="buy_packet"
-            )],
-            [InlineKeyboardButton(text="⬅️ Назад", callback_data="cancel_refill")]
-        ])
-        
-        refill_text = f"""
-💳 <b>Пополнение баланса</b>
-
-Выберите вариант покупки:
-
-📄 <b>Один отчет</b> - {single_price.price} ₽
-📦 <b>Пакет ({packet_price.reports_amount} отчетов)</b> - {packet_price.price} ₽
-
-<i>Нажмите на кнопку для оплаты</i>
-"""
-    
-    await callback.message.answer(refill_text, reply_markup=keyboard)
-
 
 @router.callback_query(F.data == "buy_single")
 async def buy_single_callback(callback: CallbackQuery, user: User, state: FSMContext):

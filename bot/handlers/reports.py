@@ -14,7 +14,6 @@ from aiogram.types import (
 
 from database.models import User, CreateReportDTO, EventType, CreateEventDTO
 from database.queries import create_report, create_event
-from bot.handlers.start import build_start_menu
 from bot.queue import ReportQueue, ReportTask
 from bot.states import CompareCardsStates
 from bot.utils import send_status_message
@@ -55,7 +54,7 @@ async def request_compare_cards_callback(callback: CallbackQuery, user: User, st
     if user.reports_balance <= 0:
         keyboard = InlineKeyboardMarkup(inline_keyboard=[
             [InlineKeyboardButton(text="📄 Пример отчета", callback_data="show_example_report")],
-            [InlineKeyboardButton(text="⬅️ Назад", callback_data="cancel_compare")]
+            [InlineKeyboardButton(text="🏠 Главное меню", callback_data="back_to_start")]
         ])
         
         await callback.message.answer(
@@ -70,7 +69,7 @@ async def request_compare_cards_callback(callback: CallbackQuery, user: User, st
     await state.set_state(CompareCardsStates.waiting_for_articles)
     
     keyboard = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="⬅️ Назад", callback_data="cancel_compare")]
+        [InlineKeyboardButton(text="🏠 Главное меню", callback_data="back_to_start")]
     ])
     
     text, keyboard = await _show_compare_cards_prompt(keyboard)
@@ -127,6 +126,17 @@ async def show_example_report_callback(callback: CallbackQuery, user: User):
         document = FSInputFile(example_file_path)
         await callback.message.answer_document(
             document=document,
+            caption=(
+                "<b>Ваш отчет готов!</b> 🚀\n\n"
+                "На что смотреть в первую очередь:\n"
+                "📍 Вкладка <b>'Запросы'</b>: Там ключи с конверсией в заказ 20%+. "
+                "Это твои деньги. Срочно в рекламу!\n"
+                "📍 Вкладка <b>'Склады'</b>: Вижу товары в пути и остатки. "
+                "Балансируй регионы, чтобы не вылететь из топа.\n"
+                "📍 Вкладка <b>'Показатели'</b>: Сравни медианную цену с прошлым кварталом — "
+                "пойми, как скидки влияют на твою маржу.\n\n"
+                "Скачивай архив и анализируй как профи!"
+            ),
             reply_markup=keyboard
         )
     except Exception as e:
@@ -136,21 +146,6 @@ async def show_example_report_callback(callback: CallbackQuery, user: User):
             "Попробуйте позже или обратитесь в поддержку.",
             reply_markup=keyboard
         )
-
-
-@router.callback_query(F.data == "back_to_start")
-async def back_to_start_callback(callback: CallbackQuery, user: User):
-    """Handle back to start menu button click"""
-    logger.info(f"User {user.id} returned to start menu")
-    
-    await callback.answer()
-    
-    welcome_text, keyboard = build_start_menu(user, callback.from_user.first_name)
-    
-    await callback.message.answer(
-        welcome_text,
-        reply_markup=keyboard
-    )
 
 
 @router.message(CompareCardsStates.waiting_for_articles, F.text)

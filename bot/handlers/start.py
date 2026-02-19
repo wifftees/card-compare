@@ -18,20 +18,26 @@ def build_start_menu(user: User, first_name: str) -> tuple[str, InlineKeyboardMa
     text = f"""
 👋 Привет, {first_name}!
 
-Я бот для генерации отчетов Wildberries.
+Вы здесь, потому что вам нужны <b>настоящие цифры</b> Wildberries, а не кривые.
 
-💰 <b>Ваш баланс:</b> {user.reports_balance} отчетов
+В одном отчете ты получишь:
+• <b>Реальный CTR и воронку</b> (Переходы → Корзины → Заказы).
+• <b>Продающие ключи</b> (Узнаешь, по каким запросам реально покупают).
+• <b>Региональную логистику</b> (Остатки и заказы по всем складам).
 
-Выберите действие ниже 👇
+👇 Нажми кнопку, чтобы сформировать отчет.
 """
     keyboard = InlineKeyboardMarkup(
         inline_keyboard=[
-            [InlineKeyboardButton(text="🔍 Сравнение карточек", callback_data="compare_cards")],
             [
-                InlineKeyboardButton(text="💰 Баланс", callback_data="balance"),
-                InlineKeyboardButton(text="💬 Поддержка", url="https://t.me/wifftees")
+                InlineKeyboardButton(text="📊 Получить отчет", callback_data="compare_cards"),
+                InlineKeyboardButton(text="💰 Пополнить баланс", callback_data="balance")
             ],
-            [InlineKeyboardButton(text="🔗 Реферальная ссылка", callback_data="referral_link")],
+            [InlineKeyboardButton(text="📄 Пример отчета", callback_data="show_example_report")],
+            [
+                InlineKeyboardButton(text="💬 Поддержка", url="https://t.me/wifftees"),
+                InlineKeyboardButton(text="🔗 Реферальная программа", callback_data="referral_link")
+            ],
         ]
     )
     return text, keyboard
@@ -69,6 +75,24 @@ async def cmd_start(message: Message, user: User):
     )
 
 
+@router.callback_query(F.data == "back_to_start")
+async def back_to_start_callback(callback: CallbackQuery, user: User):
+    """Handle back to start menu button click"""
+    logger.info(f"User {user.id} returned to start menu")
+    
+    # Track CLICK_START event
+    await create_event(CreateEventDTO(user_id=user.id, event_type=EventType.CLICK_START))
+    
+    await callback.answer()
+    
+    welcome_text, keyboard = build_start_menu(user, callback.from_user.first_name)
+    
+    await callback.message.answer(
+        welcome_text,
+        reply_markup=keyboard
+    )
+
+
 @router.callback_query(F.data == "referral_link")
 async def referral_link_callback(callback: CallbackQuery, user: User):
     """Show user their referral link"""
@@ -82,8 +106,15 @@ async def referral_link_callback(callback: CallbackQuery, user: User):
     bot_info = await callback.bot.get_me()
     referral_url = f"https://t.me/{bot_info.username}?start={user.id}"
 
+    keyboard = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="🏠 Главное меню", callback_data="back_to_start")]
+        ]
+    )
+
     await callback.message.answer(
         f"🔗 <b>Ваша реферальная ссылка:</b>\n\n"
         f"<code>{referral_url}</code>\n\n"
         f"Поделитесь этой ссылкой с друзьями — они смогут перейти в бота по вашей ссылке.",
+        reply_markup=keyboard,
     )
