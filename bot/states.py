@@ -21,3 +21,4 @@ class AdminStates(StatesGroup):
     entering_message = State()    # Typing broadcast message
     confirming_message = State()  # Confirming before send
     waiting_for_conversion_categories = State()  # Waiting for conversion category numbers
+    waiting_for_usernames_category = State()      # Waiting for a single category number to list usernames

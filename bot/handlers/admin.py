@@ -1,6 +1,7 @@
 """Admin broadcast handlers"""
 import asyncio
 import logging
+from collections.abc import Awaitable, Callable
 
 from aiogram import Router, F
 from aiogram.filters import Command
@@ -20,6 +21,8 @@ from database.queries import (
     get_users_one_report_no_payments,
     get_users_single_purchase,
     count_unique_users_by_events,
+    get_unique_user_ids_by_events,
+    get_usernames_by_ids,
 )
 
 logger = logging.getLogger(__name__)
@@ -40,7 +43,9 @@ GROUP_QUERY_MAP = {
     "bought_single": get_users_single_purchase,
 }
 
-CONVERSION_CATEGORIES: dict[int, tuple[str, list[EventType]]] = {
+ConversionSource = list[EventType] | Callable[[], Awaitable[list[int]]]
+
+CONVERSION_CATEGORIES: dict[int, tuple[str, ConversionSource]] = {
     1: ("Зашли в бота", [EventType.CLICK_START]),
     2: ('Нажали "Баланс"', [EventType.CLICK_BALANCE]),
     3: ('Нажали "Сравнить карточки"', [EventType.CLICK_COMPARE]),
@@ -50,6 +55,7 @@ CONVERSION_CATEGORIES: dict[int, tuple[str, list[EventType]]] = {
     7: ("Выбрали любую из опций", [EventType.CLICK_PACKET, EventType.CLICK_SINGLE]),
     8: ("Сделали покупку", [EventType.PAY_FOR_OPTION]),
     9: ('Нажали "Реферальная ссылка"', [EventType.CLICK_REFERRAL_LINK]),
+    10: ("Использовали пробный отчет, но не покупали", get_users_one_report_no_payments),
 }
 
 
@@ -59,6 +65,10 @@ def _build_main_menu_keyboard() -> InlineKeyboardMarkup:
         [InlineKeyboardButton(
             text="📊 Посмотреть конверсии",
             callback_data="admin_conversions",
+        )],
+        [InlineKeyboardButton(
+            text="👤 Показать ники пользователей",
+            callback_data="admin_usernames",
         )],
         [InlineKeyboardButton(
             text="📨 Сделать рассылку",
@@ -375,11 +385,12 @@ async def conversions_process(message: Message, state: FSMContext):
             return
         seen.add(n)
 
-    invalid = [n for n in numbers if n < 1 or n > 9]
+    invalid = [n for n in numbers if n not in CONVERSION_CATEGORIES]
     if invalid:
+        max_num = max(CONVERSION_CATEGORIES)
         await message.answer(
             f"❌ <b>Неверные номера: {', '.join(map(str, invalid))}</b>\n\n"
-            "Допустимые номера от 1 до 9."
+            f"Допустимые номера от 1 до {max_num}."
         )
         return
 
@@ -388,8 +399,11 @@ async def conversions_process(message: Message, state: FSMContext):
     # Fetch counts
     counts: dict[int, int] = {}
     for num in numbers:
-        _, event_types = CONVERSION_CATEGORIES[num]
-        counts[num] = await count_unique_users_by_events(event_types)
+        _, source = CONVERSION_CATEGORIES[num]
+        if callable(source):
+            counts[num] = len(await source())
+        else:
+            counts[num] = await count_unique_users_by_events(source)
 
     # Build result message
     lines = ["<b>Результаты</b>\n"]
@@ -415,6 +429,137 @@ async def conversions_process(message: Message, state: FSMContext):
     ])
 
     await message.answer("\n".join(lines), reply_markup=keyboard)
+
+
+# ── Username listing ──────────────────────────────────────────────────────
+
+MAX_MESSAGE_LENGTH = 4000
+
+
+def _build_usernames_categories_text() -> str:
+    """Build the numbered list of categories for username listing."""
+    lines = ["<b>Выберите категорию пользователей, чтобы посмотреть их ники</b>\n"]
+    for num, (label, _) in CONVERSION_CATEGORIES.items():
+        lines.append(f"{num}. {label}")
+    lines.append("\nВведите номер категории.\n💡 Пример: <code>3</code>")
+    return "\n".join(lines)
+
+
+@router.callback_query(AdminStates.main_menu, F.data == "admin_usernames")
+async def usernames_start(callback: CallbackQuery, state: FSMContext):
+    """Show categories and wait for a single category number."""
+    admin_id = callback.from_user.id
+    logger.info(f"[ADMIN] User {admin_id} opened usernames listing")
+    await callback.answer()
+    await state.set_state(AdminStates.waiting_for_usernames_category)
+
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="⬅️ Меню админки", callback_data="admin_back_to_main")],
+    ])
+
+    await callback.message.answer(
+        _build_usernames_categories_text(),
+        reply_markup=keyboard,
+    )
+
+
+@router.message(AdminStates.waiting_for_usernames_category, F.text)
+async def usernames_process(message: Message, state: FSMContext):
+    """Validate single category number and list usernames."""
+    admin_id = message.from_user.id
+    args_text = (message.text or "").strip()
+
+    if not args_text:
+        await message.answer(
+            "❌ <b>Не указан номер категории</b>\n\n"
+            "Введите один номер.\n\n"
+            "💡 Пример: <code>3</code>"
+        )
+        return
+
+    try:
+        num = int(args_text)
+    except ValueError:
+        await message.answer(
+            "❌ <b>Неверный формат</b>\n\n"
+            "Номер категории должен быть числом.\n\n"
+            "💡 Пример: <code>3</code>"
+        )
+        return
+
+    if num not in CONVERSION_CATEGORIES:
+        max_num = max(CONVERSION_CATEGORIES)
+        await message.answer(
+            f"❌ <b>Неверный номер: {num}</b>\n\n"
+            f"Допустимые номера от 1 до {max_num}."
+        )
+        return
+
+    logger.info(f"[ADMIN] User {admin_id} requested usernames for category {num}")
+
+    label, source = CONVERSION_CATEGORIES[num]
+
+    if callable(source):
+        user_ids = await source()
+    else:
+        user_ids = await get_unique_user_ids_by_events(source)
+
+    if not user_ids:
+        keyboard = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="⬅️ Меню админки", callback_data="admin_back_to_main")],
+        ])
+        await message.answer(
+            f"<b>{num}. {label}</b>\n\n"
+            "В этой категории нет пользователей.",
+            reply_markup=keyboard,
+        )
+        return
+
+    usernames = await get_usernames_by_ids(user_ids)
+
+    items: list[str] = []
+    for uid in user_ids:
+        uname = usernames.get(uid)
+        if uname:
+            items.append(f"@{uname}")
+        else:
+            items.append(f"нет ника (ID: {uid})")
+
+    header = f"<b>{num}. {label}</b>\nВсего: <b>{len(items)}</b>\n\n"
+
+    chunks: list[str] = []
+    current_lines: list[str] = []
+    current_len = len(header)
+    idx = 0
+
+    for item in items:
+        idx += 1
+        line = f"{idx}. {item}"
+        line_len = len(line) + 1  # +1 for newline
+        if current_lines and current_len + line_len > MAX_MESSAGE_LENGTH:
+            chunks.append("\n".join(current_lines))
+            current_lines = [line]
+            current_len = line_len
+        else:
+            current_lines.append(line)
+            current_len += line_len
+
+    if current_lines:
+        chunks.append("\n".join(current_lines))
+
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="⬅️ Меню админки", callback_data="admin_back_to_main")],
+    ])
+
+    for i, chunk in enumerate(chunks):
+        text = header + chunk if i == 0 else chunk
+        is_last = i == len(chunks) - 1
+        await message.answer(text, reply_markup=keyboard if is_last else None)
+
+    logger.info(
+        f"[ADMIN] Sent {len(chunks)} message(s) with {len(items)} usernames "
+        f"for category {num} to user {admin_id}"
+    )
 
 
 # ── Navigation helpers ──────────────────────────────────────────────────

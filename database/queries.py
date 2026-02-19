@@ -430,15 +430,15 @@ async def update_report_state(report_id: int, state: ReportState) -> Optional[Re
 
 # Conversion analytics functions
 
-async def count_unique_users_by_events(event_types: list[EventType]) -> int:
+async def get_unique_user_ids_by_events(event_types: list[EventType]) -> list[int]:
     """
-    Count unique users who have at least one event of any of the given types.
+    Get unique user IDs who have at least one event of any of the given types.
 
     Args:
         event_types: List of event types to filter by (OR logic)
 
     Returns:
-        int: Number of unique users
+        list[int]: Unique user IDs
     """
     try:
         supabase = get_supabase()
@@ -462,13 +462,64 @@ async def count_unique_users_by_events(event_types: list[EventType]) -> int:
                 break
             offset += batch_size
 
-        unique_users = {row["user_id"] for row in all_data}
-        count = len(unique_users)
-        logger.info(f"📊 Unique users for events {event_values}: {count}")
-        return count
+        unique_users = list({row["user_id"] for row in all_data})
+        logger.info(f"📊 Unique users for events {event_values}: {len(unique_users)}")
+        return unique_users
     except Exception as e:
-        logger.error(f"Error counting unique users by events {event_types}: {e}", exc_info=True)
-        return 0
+        logger.error(f"Error fetching unique users by events {event_types}: {e}", exc_info=True)
+        return []
+
+
+async def count_unique_users_by_events(event_types: list[EventType]) -> int:
+    """
+    Count unique users who have at least one event of any of the given types.
+
+    Args:
+        event_types: List of event types to filter by (OR logic)
+
+    Returns:
+        int: Number of unique users
+    """
+    return len(await get_unique_user_ids_by_events(event_types))
+
+
+async def get_usernames_by_ids(user_ids: list[int]) -> dict[int, Optional[str]]:
+    """
+    Fetch usernames for given user IDs from the users table.
+
+    Args:
+        user_ids: List of Telegram user IDs
+
+    Returns:
+        dict mapping user_id to username (None if not set)
+    """
+    if not user_ids:
+        return {}
+    try:
+        supabase = get_supabase()
+        result: dict[int, Optional[str]] = {}
+        batch_size = 1000
+        offset = 0
+
+        while True:
+            resp = (
+                supabase.table("users")
+                .select("id, username")
+                .in_("id", user_ids)
+                .range(offset, offset + batch_size - 1)
+                .execute()
+            )
+            batch = resp.data or []
+            for row in batch:
+                result[row["id"]] = row.get("username")
+            if len(batch) < batch_size:
+                break
+            offset += batch_size
+
+        return result
+    except Exception as e:
+        logger.error(f"Error fetching usernames for {len(user_ids)} users: {e}", exc_info=True)
+        return {}
 
 
 # Admin broadcast query functions
