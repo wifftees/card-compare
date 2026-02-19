@@ -13,6 +13,30 @@ logger = logging.getLogger(__name__)
 router = Router()
 
 
+def build_start_menu(user: User, first_name: str) -> tuple[str, InlineKeyboardMarkup]:
+    """Build welcome text and main menu keyboard."""
+    text = f"""
+👋 Привет, {first_name}!
+
+Я бот для генерации отчетов Wildberries.
+
+💰 <b>Ваш баланс:</b> {user.reports_balance} отчетов
+
+Выберите действие ниже 👇
+"""
+    keyboard = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="🔍 Сравнение карточек", callback_data="compare_cards")],
+            [
+                InlineKeyboardButton(text="💰 Баланс", callback_data="balance"),
+                InlineKeyboardButton(text="💬 Поддержка", url="https://t.me/wifftees")
+            ],
+            [InlineKeyboardButton(text="🔗 Реферальная ссылка", callback_data="referral_link")],
+        ]
+    )
+    return text, keyboard
+
+
 @router.message(CommandStart())
 async def cmd_start(message: Message, user: User):
     """Handle /start command"""
@@ -37,26 +61,7 @@ async def cmd_start(message: Message, user: User):
         # Track CLICK_START event
         await create_event(CreateEventDTO(user_id=user.id, event_type=EventType.CLICK_START))
         
-        welcome_text = f"""
-👋 Привет, {message.from_user.first_name}!
-
-Я бот для генерации отчетов Wildberries.
-
-💰 <b>Ваш баланс:</b> {user.reports_balance} отчетов
-
-Выберите действие ниже 👇
-"""
-        
-        keyboard = InlineKeyboardMarkup(
-            inline_keyboard=[
-                [InlineKeyboardButton(text="🔍 Сравнение карточек", callback_data="compare_cards")],
-                [
-                    InlineKeyboardButton(text="💰 Баланс", callback_data="balance"),
-                    InlineKeyboardButton(text="💬 Поддержка", url="https://t.me/wifftees")
-                ],
-                [InlineKeyboardButton(text="🔗 Реферальная ссылка", callback_data="referral_link")],
-            ]
-        )
+        welcome_text, keyboard = build_start_menu(user, message.from_user.first_name)
     
     await message.answer(
         welcome_text,
@@ -68,6 +73,9 @@ async def cmd_start(message: Message, user: User):
 async def referral_link_callback(callback: CallbackQuery, user: User):
     """Show user their referral link"""
     logger.info(f"User {user.id} requested referral link")
+
+    # Track CLICK_REFERRAL_LINK event
+    await create_event(CreateEventDTO(user_id=user.id, event_type=EventType.CLICK_REFERRAL_LINK))
 
     await callback.answer()
 

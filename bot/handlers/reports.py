@@ -14,6 +14,7 @@ from aiogram.types import (
 
 from database.models import User, CreateReportDTO, EventType, CreateEventDTO
 from database.queries import create_report, create_event
+from bot.handlers.start import build_start_menu
 from bot.queue import ReportQueue, ReportTask
 from bot.states import CompareCardsStates
 from bot.utils import send_status_message
@@ -92,10 +93,13 @@ async def cancel_compare_callback(callback: CallbackQuery, state: FSMContext):
 
 
 @router.callback_query(F.data == "show_example_report")
-async def show_example_report_callback(callback: CallbackQuery):
+async def show_example_report_callback(callback: CallbackQuery, user: User):
     """Handle example report button click"""
-    logger.info(f"User {callback.from_user.id} requested example report")
-    
+    logger.info(f"User {user.id} requested example report")
+
+    # Track CLICK_EXAMPLE_REPORT event
+    await create_event(CreateEventDTO(user_id=user.id, event_type=EventType.CLICK_EXAMPLE_REPORT))
+
     await callback.answer()
     
     keyboard = InlineKeyboardMarkup(
@@ -141,26 +145,7 @@ async def back_to_start_callback(callback: CallbackQuery, user: User):
     
     await callback.answer()
     
-    welcome_text = f"""
-👋 Привет, {callback.from_user.first_name}!
-
-Я бот для генерации отчетов Wildberries.
-
-💰 <b>Ваш баланс:</b> {user.reports_balance} отчетов
-
-Выберите действие ниже 👇
-"""
-    
-    keyboard = InlineKeyboardMarkup(
-        inline_keyboard=[
-            [InlineKeyboardButton(text="🔍 Сравнение карточек", callback_data="compare_cards")],
-            [
-                InlineKeyboardButton(text="💰 Баланс", callback_data="balance"),
-                InlineKeyboardButton(text="💬 Поддержка", url="https://t.me/wifftees")
-            ],
-            [InlineKeyboardButton(text="🔗 Реферальная ссылка", callback_data="referral_link")],
-        ]
-    )
+    welcome_text, keyboard = build_start_menu(user, callback.from_user.first_name)
     
     await callback.message.answer(
         welcome_text,

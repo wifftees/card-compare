@@ -428,6 +428,49 @@ async def update_report_state(report_id: int, state: ReportState) -> Optional[Re
         return None
 
 
+# Conversion analytics functions
+
+async def count_unique_users_by_events(event_types: list[EventType]) -> int:
+    """
+    Count unique users who have at least one event of any of the given types.
+
+    Args:
+        event_types: List of event types to filter by (OR logic)
+
+    Returns:
+        int: Number of unique users
+    """
+    try:
+        supabase = get_supabase()
+        all_data: list[dict] = []
+        batch_size = 1000
+        offset = 0
+
+        event_values = [et.value for et in event_types]
+
+        while True:
+            query = (
+                supabase.table("events")
+                .select("user_id")
+                .in_("event_type", event_values)
+            )
+            resp = query.range(offset, offset + batch_size - 1).execute()
+            batch = resp.data or []
+            all_data.extend(batch)
+
+            if len(batch) < batch_size:
+                break
+            offset += batch_size
+
+        unique_users = {row["user_id"] for row in all_data}
+        count = len(unique_users)
+        logger.info(f"📊 Unique users for events {event_values}: {count}")
+        return count
+    except Exception as e:
+        logger.error(f"Error counting unique users by events {event_types}: {e}", exc_info=True)
+        return 0
+
+
 # Admin broadcast query functions
 
 def _fetch_all_rows(supabase, table: str, columns: str, filters: Optional[dict] = None) -> list[dict]:

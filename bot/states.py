@@ -15,6 +15,9 @@ class CompareCardsStates(StatesGroup):
 
 class AdminStates(StatesGroup):
     """States for admin broadcast flow"""
+    main_menu = State()           # Main admin menu
+    choosing_action = State()     # Choosing between conversions or broadcast
     choosing_group = State()      # Selecting user segment
     entering_message = State()    # Typing broadcast message
     confirming_message = State()  # Confirming before send
+    waiting_for_conversion_categories = State()  # Waiting for conversion category numbers
