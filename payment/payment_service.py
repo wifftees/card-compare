@@ -4,6 +4,7 @@ import uuid
 from typing import Optional
 
 from aiogram import Bot
+from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
 from database.models import ProductOption, PaymentStatus, CreatePaymentDTO
 from database.queries import (
@@ -277,9 +278,13 @@ class PaymentService:
 
 Спасибо за покупку! 💚
 """
+                keyboard = InlineKeyboardMarkup(inline_keyboard=[
+                    [InlineKeyboardButton(text="🏠 Главное меню", callback_data="back_to_start")]
+                ])
                 await self.bot.send_message(
                     chat_id=payment.user_id,
-                    text=success_text
+                    text=success_text,
+                    reply_markup=keyboard
                 )
                 logger.info(f"📨 [COMPLETE] Notification sent to user {payment.user_id}")
             except Exception as e:
