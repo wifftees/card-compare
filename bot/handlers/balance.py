@@ -46,8 +46,10 @@ async def show_balance_callback(callback: CallbackQuery, user: User):
         
         single_price = await get_price_by_option(ProductOption.SINGLE)
         packet_price = await get_price_by_option(ProductOption.PACKET)
+        packet_first_price = await get_price_by_option(ProductOption.PACKET_FIRST)
+        packet_second_price = await get_price_by_option(ProductOption.PACKET_SECOND)
         
-        if single_price is None or packet_price is None:
+        if any(p is None for p in (single_price, packet_price, packet_first_price, packet_second_price)):
             logger.error(f"❌ Failed to fetch prices from database for user {user.id}")
             await callback.message.answer(
                 "❌ Ошибка загрузки цен. Попробуйте позже."
@@ -56,18 +58,27 @@ async def show_balance_callback(callback: CallbackQuery, user: User):
         
         logger.info(
             f"💰 Loaded prices for user {user.id}: "
-            f"SINGLE={single_price.price} RUB, PACKET={packet_price.price} RUB"
+            f"SINGLE={single_price.price} RUB, PACKET={packet_price.price} RUB, "
+            f"PACKET_FIRST={packet_first_price.price} RUB, "
+            f"PACKET_SECOND={packet_second_price.price} RUB"
         )
         
-        # Create keyboard with pricing options
         keyboard = InlineKeyboardMarkup(inline_keyboard=[
             [InlineKeyboardButton(
                 text=f"📄 1 отчет - {single_price.price} ₽", 
-                callback_data="buy_single"
+                callback_data="buy:SINGLE"
             )],
             [InlineKeyboardButton(
                 text=f"📦 Пакет ({packet_price.reports_amount} отчетов) - {packet_price.price} ₽", 
-                callback_data="buy_packet"
+                callback_data="buy:PACKET"
+            )],
+            [InlineKeyboardButton(
+                text=f"📦 Месяц под контролем ({packet_first_price.reports_amount} отчетов) - {packet_first_price.price} ₽", 
+                callback_data="buy:PACKET_FIRST"
+            )],
+            [InlineKeyboardButton(
+                text=f"📦 Профессионал ({packet_second_price.reports_amount} отчетов) - {packet_second_price.price} ₽", 
+                callback_data="buy:PACKET_SECOND"
             )],
             [InlineKeyboardButton(text="🏠 Главное меню", callback_data="back_to_start")]
         ])
@@ -82,114 +93,69 @@ async def show_balance_callback(callback: CallbackQuery, user: User):
     
     await callback.message.answer(balance_text, reply_markup=keyboard)
 
-@router.callback_query(F.data == "buy_single")
-async def buy_single_callback(callback: CallbackQuery, user: User, state: FSMContext):
-    """Handle buy single report button - generate YooKassa payment link"""
-    logger.info(f"💳 [PAYMENT] User {user.id} selected SINGLE option")
+BUY_OPTIONS: dict[str, tuple[ProductOption, EventType, str]] = {
+    "SINGLE": (ProductOption.SINGLE, EventType.CLICK_SINGLE, "1 отчет"),
+    "PACKET": (ProductOption.PACKET, EventType.CLICK_PACKET, "Пакет"),
+    "PACKET_FIRST": (ProductOption.PACKET_FIRST, EventType.CLICK_PACKET_FIRST, "Месяц под контролем"),
+    "PACKET_SECOND": (ProductOption.PACKET_SECOND, EventType.CLICK_PACKET_SECOND, "Профессионал"),
+}
+
+
+@router.callback_query(F.data.startswith("buy:"))
+async def buy_option_callback(callback: CallbackQuery, user: User, state: FSMContext):
+    """Unified handler for all buy options"""
+    option_key = callback.data.split(":", 1)[1]
     
-    # Track CLICK_SINGLE event
-    await create_event(CreateEventDTO(user_id=user.id, event_type=EventType.CLICK_SINGLE))
+    if option_key not in BUY_OPTIONS:
+        logger.warning(f"[PAYMENT] Unknown buy option '{option_key}' from user {user.id}")
+        await callback.answer("Неизвестная опция", show_alert=True)
+        return
     
+    product_option, event_type, display_name = BUY_OPTIONS[option_key]
+    
+    logger.info(f"💳 [PAYMENT] User {user.id} selected {option_key} option")
+    await create_event(CreateEventDTO(user_id=user.id, event_type=event_type))
     await callback.answer()
     
     async with LoadingSticker(callback.message, callback.bot):
-        # Get price from database
         from database.queries import get_price_by_option
         
-        price = await get_price_by_option(ProductOption.SINGLE)
+        price = await get_price_by_option(product_option)
         
         if price is None:
-            logger.error(f"❌ [PAYMENT] Failed to fetch SINGLE price for user {user.id}")
+            logger.error(f"❌ [PAYMENT] Failed to fetch {option_key} price for user {user.id}")
             await callback.message.answer("❌ Ошибка загрузки цены. Попробуйте позже.")
             return
         
-        logger.info(f"💰 [PAYMENT] SINGLE price: {price.price} RUB")
+        logger.info(f"💰 [PAYMENT] {option_key} price: {price.price} RUB")
         
         try:
-            # Generate payment link via YooKassa
             payment_service = PaymentService(bot=callback.bot)
             confirmation_url = await payment_service.generate_payment_link(
                 user_id=user.id,
-                option=ProductOption.SINGLE
+                option=product_option
             )
             
-            # Create keyboard with payment link
             keyboard = InlineKeyboardMarkup(inline_keyboard=[
                 [InlineKeyboardButton(text="💳 Оплатить", url=confirmation_url)],
                 [InlineKeyboardButton(text="⬅️ Назад", callback_data="cancel_payment")]
             ])
             
+            if price.reports_amount > 1:
+                product_label = f"{display_name} ({price.reports_amount} отчетов)"
+            else:
+                product_label = display_name
+            
             payment_text = f"""
 💳 <b>Оплата</b>
 
-Товар: <b>1 отчет</b>
+Товар: <b>{product_label}</b>
 Сумма: <b>{price.price} ₽</b>
 
 Нажмите на кнопку ниже для перехода к оплате.
 После успешной оплаты баланс будет автоматически пополнен.
 """
             
-        
-        except Exception as e:
-            logger.error(f"❌ [PAYMENT] Error generating payment link: {e}", exc_info=True)
-            await callback.message.answer(
-                "❌ Ошибка создания платежа. Попробуйте позже."
-            )
-            return
-    
-    await callback.message.answer(payment_text, reply_markup=keyboard)
-    logger.info(f"✅ [PAYMENT] Payment link sent to user {user.id}")
-
-
-@router.callback_query(F.data == "buy_packet")
-async def buy_packet_callback(callback: CallbackQuery, user: User, state: FSMContext):
-    """Handle buy packet button - generate YooKassa payment link"""
-    logger.info(f"💳 [PAYMENT] User {user.id} selected PACKET option")
-    
-    # Track CLICK_PACKET event
-    await create_event(CreateEventDTO(user_id=user.id, event_type=EventType.CLICK_PACKET))
-    
-    await callback.answer()
-    
-    async with LoadingSticker(callback.message, callback.bot):
-        # Get price from database
-        from database.queries import get_price_by_option
-        
-        price = await get_price_by_option(ProductOption.PACKET)
-        
-        if price is None:
-            logger.error(f"❌ [PAYMENT] Failed to fetch PACKET price for user {user.id}")
-            await callback.message.answer("❌ Ошибка загрузки цены. Попробуйте позже.")
-            return
-        
-        logger.info(f"💰 [PAYMENT] PACKET price: {price.price} RUB")
-        
-        try:
-            # Generate payment link via YooKassa
-            payment_service = PaymentService(bot=callback.bot)
-            confirmation_url = await payment_service.generate_payment_link(
-                user_id=user.id,
-                option=ProductOption.PACKET
-            )
-            
-            # Create keyboard with payment link
-            keyboard = InlineKeyboardMarkup(inline_keyboard=[
-                [InlineKeyboardButton(text="💳 Оплатить", url=confirmation_url)],
-                [InlineKeyboardButton(text="⬅️ Назад", callback_data="cancel_payment")]
-            ])
-            
-            payment_text = f"""
-💳 <b>Оплата</b>
-
-Товар: <b>Пакет ({price.reports_amount} отчетов)</b>
-Сумма: <b>{price.price} ₽</b>
-
-Нажмите на кнопку ниже для перехода к оплате.
-После успешной оплаты баланс будет автоматически пополнен.
-"""
-            
-
-        
         except Exception as e:
             logger.error(f"❌ [PAYMENT] Error generating payment link: {e}", exc_info=True)
             await callback.message.answer(

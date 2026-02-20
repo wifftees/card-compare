@@ -52,10 +52,12 @@ CONVERSION_CATEGORIES: dict[int, tuple[str, ConversionSource]] = {
     4: ("Ввели артикулы", [EventType.ENTER_ARTICLES]),
     5: ('Выбрали опцию "Один отчет"', [EventType.CLICK_SINGLE]),
     6: ('Выбрали опцию "Пакет"', [EventType.CLICK_PACKET]),
-    7: ("Выбрали любую из опций", [EventType.CLICK_PACKET, EventType.CLICK_SINGLE]),
-    8: ("Сделали покупку", [EventType.PAY_FOR_OPTION]),
-    9: ('Нажали "Реферальная ссылка"', [EventType.CLICK_REFERRAL_LINK]),
-    10: ("Использовали пробный отчет, но не покупали", get_users_one_report_no_payments),
+    7: ('Выбрали опцию "Пакет 1"', [EventType.CLICK_PACKET_FIRST]),
+    8: ('Выбрали опцию "Пакет 2"', [EventType.CLICK_PACKET_SECOND]),
+    9: ("Выбрали любую из опций", [EventType.CLICK_PACKET, EventType.CLICK_PACKET_FIRST, EventType.CLICK_PACKET_SECOND, EventType.CLICK_SINGLE]),
+    10: ("Сделали покупку", [EventType.PAY_FOR_OPTION]),
+    11: ('Нажали "Реферальная ссылка"', [EventType.CLICK_REFERRAL_LINK]),
+    12: ("Использовали пробный отчет, но не покупали", get_users_one_report_no_payments),
 }
 
 
