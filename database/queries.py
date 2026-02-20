@@ -95,6 +95,43 @@ async def update_balance(user_id: int, amount: int) -> Optional[User]:
         return None
 
 
+async def count_referrals(user_id: int) -> int:
+    """Count total number of users invited by the given user_id"""
+    try:
+        supabase = get_supabase()
+        response = supabase.table("users").select("id", count="exact").eq("invited_by", user_id).execute()
+        
+        count = response.count if response.count is not None else 0
+        logger.debug(f"User {user_id} has {count} referrals")
+        return count
+    except Exception as e:
+        logger.error(f"Error counting referrals for user {user_id}: {e}")
+        return 0
+
+
+async def add_referral_balance(user_id: int, amount: int) -> Optional[User]:
+    """Add amount to referral_balance for the given user"""
+    try:
+        supabase = get_supabase()
+        user = await get_user(user_id)
+        if not user:
+            logger.error(f"User {user_id} not found for referral_balance update")
+            return None
+
+        new_balance = user.referral_balance + amount
+        response = supabase.table("users").update({
+            "referral_balance": new_balance
+        }).eq("id", user_id).execute()
+
+        if response.data and len(response.data) > 0:
+            logger.info(f"✅ Updated referral_balance for user {user_id}: {user.referral_balance} -> {new_balance}")
+            return User(**response.data[0])
+        return None
+    except Exception as e:
+        logger.error(f"Error updating referral_balance for user {user_id}: {e}")
+        return None
+
+
 async def update_last_active_at(user_id: int) -> Optional[User]:
     """Update user's last_active_at timestamp"""
     try:
@@ -111,49 +148,6 @@ async def update_last_active_at(user_id: int) -> Optional[User]:
         logger.error(f"Error updating last_active_at for user {user_id}: {e}")
         return None
 
-
-async def update_user_invited_by(user_id: int, invited_by: int) -> Optional[User]:
-    """
-    Update user's invited_by field.
-    Only updates if the field is currently NULL (not already set).
-    
-    Args:
-        user_id: ID of the user to update
-        invited_by: ID of the user who invited them
-        
-    Returns:
-        Updated User object or None if update failed
-    """
-    try:
-        supabase = get_supabase()
-        
-        # First check if invited_by is already set
-        user = await get_user(user_id)
-        if not user:
-            logger.error(f"User {user_id} not found for invited_by update")
-            return None
-        
-        if user.invited_by is not None:
-            logger.info(f"User {user_id} already has invited_by={user.invited_by}, skipping update")
-            return user
-        
-        # Update only if invited_by is NULL
-        response = supabase.table("users").update({
-            "invited_by": invited_by
-        }).eq("id", user_id).is_("invited_by", "null").execute()
-        
-        if response.data and len(response.data) > 0:
-            logger.info(f"✅ Updated invited_by for user {user_id}: invited by {invited_by}")
-            return User(**response.data[0])
-        
-        logger.warning(f"Failed to update invited_by for user {user_id} (may already be set)")
-        return user
-    except Exception as e:
-        logger.error(f"Error updating invited_by for user {user_id}: {e}")
-        return None
-
-
-# Event tracking functions
 
 async def create_event(data: CreateEventDTO) -> Optional[Event]:
     """

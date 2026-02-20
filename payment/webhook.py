@@ -1,9 +1,10 @@
 """Webhook handler for YooKassa payment notifications"""
 import logging
+import math
 from typing import Dict, Any
 
 from payment.payment_service import PaymentService
-from database.queries import create_event
+from database.queries import create_event, get_user, get_payment_by_external_id, add_referral_balance
 from database.models import EventType, CreateEventDTO
 
 logger = logging.getLogger(__name__)
@@ -76,6 +77,21 @@ async def handle_yookassa_webhook(
             
             if success:
                 logger.info(f"✅ [WEBHOOK] Payment completed successfully: order_id={order_id}")
+
+                # Referral bonus: credit 20% (rounded up) to the inviter
+                try:
+                    buyer = await get_user(user_id)
+                    if buyer and buyer.invited_by:
+                        payment_obj = await get_payment_by_external_id(order_id)
+                        if payment_obj:
+                            bonus = math.ceil(payment_obj.total_price * 0.2)
+                            await add_referral_balance(buyer.invited_by, bonus)
+                            logger.info(
+                                f"💸 [WEBHOOK] Referral bonus {bonus} credited to user {buyer.invited_by} "
+                                f"(20% of {payment_obj.total_price})"
+                            )
+                except Exception as ref_err:
+                    logger.error(f"❌ [WEBHOOK] Failed to process referral bonus: {ref_err}", exc_info=True)
             else:
                 logger.error(f"❌ [WEBHOOK] Failed to complete payment: order_id={order_id}")
         

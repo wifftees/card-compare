@@ -5,7 +5,7 @@ from aiogram.filters import CommandStart
 from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
 
 from database.models import User, EventType, CreateEventDTO
-from database.queries import create_event, update_user_invited_by
+from database.queries import create_event, count_referrals
 from bot.utils import LoadingSticker
 
 logger = logging.getLogger(__name__)
@@ -54,13 +54,7 @@ async def cmd_start(message: Message, user: User):
             try:
                 args = message.text.split(maxsplit=1)[1]
                 referrer_id = int(args)
-                
-                # Update invited_by if not already set
-                if user.invited_by is None:
-                    logger.info(f"Processing referral: user {user.id} invited by {referrer_id}")
-                    await update_user_invited_by(user.id, referrer_id)
-                else:
-                    logger.debug(f"User {user.id} already has referrer: {user.invited_by}")
+            
             except (ValueError, IndexError) as e:
                 logger.debug(f"Failed to extract referrer_id from /start: {e}")
         
@@ -105,6 +99,9 @@ async def referral_link_callback(callback: CallbackQuery, user: User):
 
     bot_info = await callback.bot.get_me()
     referral_url = f"https://t.me/{bot_info.username}?start={user.id}"
+    
+    # Count referrals dynamically
+    referral_count = await count_referrals(user.id)
 
     keyboard = InlineKeyboardMarkup(
         inline_keyboard=[
@@ -114,7 +111,15 @@ async def referral_link_callback(callback: CallbackQuery, user: User):
 
     await callback.message.answer(
         f"🔗 <b>Ваша реферальная ссылка:</b>\n\n"
-        f"<code>{referral_url}</code>\n\n"
-        f"Поделитесь этой ссылкой с друзьями — они смогут перейти в бота по вашей ссылке.",
+        f'<a href="{referral_url}">Приглашаю в бота для сравнения карточек</a>\n\n'
+        f"👥 Приглашено друзей: <b>{referral_count}</b>\n"
+        f"💰 Реферальный баланс: <b>{user.referral_balance} ₽</b>\n\n"
+        f"Зарабатывай вместе с нами!\n"
+        f"💸 Стань партнером сервиса и получай пассивный доход с каждого отчета.\n\n"
+        f"Расскажи о нашем боте.\n"
+        f"Они получат пользу, а ты получишь 20% с каждого оплаченного ими отчета.\n\n"
+        f"Условия:\n"
+        f"✅ 20% с каждого оплаченного отчета, купленного по твоей ссылке.\n"
+        f"✅ Мгновенное начисление на твой баланс в боте после оплаты.",
         reply_markup=keyboard,
     )

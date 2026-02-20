@@ -2,7 +2,7 @@
 from datetime import datetime
 from typing import Optional
 from enum import Enum
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 
 
 class ProductOption(str, Enum):
@@ -21,6 +21,7 @@ class User(BaseModel):
     reports_balance: int = 0
     last_active_at: Optional[datetime] = None
     invited_by: Optional[int] = None  # ID of user who invited this user
+    referral_balance: int = 0
     
     class Config:
         from_attributes = True
