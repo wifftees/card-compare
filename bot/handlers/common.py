@@ -17,8 +17,7 @@ async def handle_unknown_message(message: Message, user: User):
     
     keyboard = InlineKeyboardMarkup(
         inline_keyboard=[
-            [InlineKeyboardButton(text="🔍 Сравнение карточек", callback_data="compare_cards")],
-            [InlineKeyboardButton(text="💰 Баланс", callback_data="balance")],
+            [InlineKeyboardButton(text="🏠 Главное меню", callback_data="back_to_start")]
         ]
     )
     
