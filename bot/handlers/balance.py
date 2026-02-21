@@ -100,11 +100,18 @@ BUY_OPTIONS: dict[str, tuple[ProductOption, EventType, str]] = {
     "PACKET_SECOND": (ProductOption.PACKET_SECOND, EventType.CLICK_PACKET_SECOND, "Профессионал"),
 }
 
+UPGRADE_MAP: dict[str, str] = {
+    "SINGLE": "PACKET",
+    "PACKET": "PACKET_FIRST",
+    "PACKET_FIRST": "PACKET_SECOND",
+}
 
-@router.callback_query(F.data.startswith("buy:"))
+
+@router.callback_query(F.data.startswith("buy:") | F.data.startswith("upgrade:"))
 async def buy_option_callback(callback: CallbackQuery, user: User, state: FSMContext):
-    """Unified handler for all buy options"""
-    option_key = callback.data.split(":", 1)[1]
+    """Unified handler for all buy and upgrade options"""
+    prefix, option_key = callback.data.split(":", 1)
+    is_upgrade = prefix == "upgrade"
     
     if option_key not in BUY_OPTIONS:
         logger.warning(f"[PAYMENT] Unknown buy option '{option_key}' from user {user.id}")
@@ -116,6 +123,9 @@ async def buy_option_callback(callback: CallbackQuery, user: User, state: FSMCon
     logger.info(f"💳 [PAYMENT] User {user.id} selected {option_key} option")
     await create_event(CreateEventDTO(user_id=user.id, event_type=event_type))
     await callback.answer()
+    
+    if is_upgrade:
+        await callback.message.delete()
     
     async with LoadingSticker(callback.message, callback.bot):
         from database.queries import get_price_by_option
@@ -136,10 +146,20 @@ async def buy_option_callback(callback: CallbackQuery, user: User, state: FSMCon
                 option=product_option
             )
             
-            keyboard = InlineKeyboardMarkup(inline_keyboard=[
+            buttons = [
                 [InlineKeyboardButton(text="💳 Оплатить", url=confirmation_url)],
-                [InlineKeyboardButton(text="⬅️ Назад", callback_data="cancel_payment")]
-            ])
+            ]
+            
+            upgrade_key = UPGRADE_MAP.get(option_key)
+            if upgrade_key and upgrade_key in BUY_OPTIONS:
+                _, _, upgrade_name = BUY_OPTIONS[upgrade_key]
+                buttons.append([InlineKeyboardButton(
+                    text=f"⬆️ Улучшить до «{upgrade_name}»",
+                    callback_data=f"upgrade:{upgrade_key}"
+                )])
+            
+            buttons.append([InlineKeyboardButton(text="⬅️ Назад", callback_data="cancel_payment")])
+            keyboard = InlineKeyboardMarkup(inline_keyboard=buttons)
             
             if price.reports_amount > 1:
                 product_label = f"{display_name} ({price.reports_amount} отчетов)"
