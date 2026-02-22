@@ -17,8 +17,7 @@ class BotSettings(BaseSettings):
     
     # Supabase
     supabase_url: str = ""
-    supabase_key: str = ""  # Anon/public key for client-side operations
-    supabase_service_key: str = ""  # Service role key for server-side operations (bypasses RLS)
+    supabase_key: str = ""  # Anon/public key
     
     # Wildberries
     wb_phone: str = ""
@@ -47,6 +46,9 @@ class BotSettings(BaseSettings):
     webhook_port: int = 8080
     webhook_path: str = "/api/payment/yookassa"
     
+    # Notifications
+    notification_check_interval: int = 600  # Run notification worker every N seconds (default: 10 minutes)
+
     # App
     debug: bool = False
     log_level: str = "INFO"

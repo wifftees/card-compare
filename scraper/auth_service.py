@@ -188,11 +188,32 @@ class WBAuthService:
     async def ensure_authorized(self):
         """Check and perform authorization if needed"""
         logger.info('🌐 Navigating to page...')
-        await self._page.goto(
-            'https://seller.wildberries.ru/platform-analytics/cards-comparison',
-            wait_until='domcontentloaded'
-        )
-        logger.info(f'✅ Page loaded: {self._page.url}')
+        
+        # Try navigation with retry logic and increased timeout
+        max_retries = 3
+        retry_count = 0
+        last_error = None
+        
+        while retry_count < max_retries:
+            try:
+                await self._page.goto(
+                    'https://seller.wildberries.ru/platform-analytics/cards-comparison',
+                    wait_until='domcontentloaded',
+                    timeout=60000  # Increased to 60 seconds
+                )
+                logger.info(f'✅ Page loaded: {self._page.url}')
+                break  # Success, exit retry loop
+            except PlaywrightTimeoutError as e:
+                retry_count += 1
+                last_error = e
+                logger.warning(f'⚠️  Navigation timeout (attempt {retry_count}/{max_retries})')
+                
+                if retry_count < max_retries:
+                    logger.info(f'🔄 Retrying in 5 seconds...')
+                    await asyncio.sleep(5)
+                else:
+                    logger.error(f'❌ Failed to navigate after {max_retries} attempts')
+                    raise Exception(f'Navigation timeout after {max_retries} attempts: {last_error}')
         
         # Wait for page to fully load and stabilize
         logger.info('⏳ Waiting for page to stabilize...')

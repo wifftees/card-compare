@@ -150,15 +150,9 @@ async def update_last_active_at(user_id: int) -> Optional[User]:
 
 
 async def create_event(data: CreateEventDTO) -> Optional[Event]:
-    """
-    Create a new event and update user's last_active_at.
-    Uses admin client to bypass RLS policies.
-    """
+    """Create a new event and update user's last_active_at."""
     try:
-        from database.client import get_supabase_admin
-        
-        # Use admin client to bypass RLS for server-side event creation
-        supabase = get_supabase_admin()
+        supabase = get_supabase()
         event_data = {
             "user_id": data.user_id,
             "event_type": data.event_type.value,

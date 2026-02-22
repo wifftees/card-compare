@@ -24,6 +24,9 @@ from scraper.wb_client import WBClient
 from scraper.config import WBConfig
 from scraper.state_storage import StateStorage
 
+from notifications.service import NotificationService
+import notifications.resolvers  # noqa: F401 — registers resolvers on import
+
 from utils.logger import setup_logging
 
 logger = logging.getLogger(__name__)
@@ -42,6 +45,7 @@ class Application:
         self.auth_check_task: asyncio.Task | None = None
         self.state_saver_task: asyncio.Task | None = None
         self.browser_restart_task: asyncio.Task | None = None
+        self.notification_worker_task: asyncio.Task | None = None
         self.webhook_runner = None  # aiohttp AppRunner for webhook server
         self._shutdown = False
         self._active_reports_count = 0  # Track active report generation
@@ -533,6 +537,32 @@ class Application:
         
         logger.info("🛑 Periodic browser restart stopped")
     
+    async def notification_worker(self):
+        """Background task that periodically sends re-engagement notifications."""
+        interval = settings.notification_check_interval
+        logger.info(f"🔔 Notification worker started (interval: {interval}s)")
+        
+        notification_service = NotificationService(self.bot)
+        
+        # Initial delay so the bot is fully up before first cycle
+        await asyncio.sleep(30)
+        
+        while not self._shutdown:
+            try:
+                await notification_service.run_cycle()
+            except asyncio.CancelledError:
+                logger.info("🛑 Notification worker cancelled")
+                break
+            except Exception as e:
+                logger.error(f"❌ Error in notification worker cycle: {e}", exc_info=True)
+            
+            try:
+                await asyncio.sleep(interval)
+            except asyncio.CancelledError:
+                break
+        
+        logger.info("🛑 Notification worker stopped")
+    
     async def start(self):
         """Start the application"""
         # Setup components
@@ -557,6 +587,10 @@ class Application:
         # Start periodic browser restart
         logger.info("🚀 Starting periodic browser restart...")
         self.browser_restart_task = asyncio.create_task(self.periodic_browser_restart())
+        
+        # Start notification worker
+        logger.info("🚀 Starting notification worker...")
+        self.notification_worker_task = asyncio.create_task(self.notification_worker())
         
         # Start webhook server for YooKassa
         logger.info("🌐 Starting webhook server...")
@@ -634,6 +668,18 @@ class Application:
                 self.browser_restart_task.cancel()
                 try:
                     await self.browser_restart_task
+                except asyncio.CancelledError:
+                    pass
+        
+        if self.notification_worker_task:
+            logger.info("⏳ Stopping notification worker...")
+            try:
+                await asyncio.wait_for(self.notification_worker_task, timeout=5.0)
+            except asyncio.TimeoutError:
+                logger.warning("⚠️ Notification worker timeout, cancelling...")
+                self.notification_worker_task.cancel()
+                try:
+                    await self.notification_worker_task
                 except asyncio.CancelledError:
                     pass
         
