@@ -75,6 +75,47 @@ async def resolve_click_example_report() -> list[CampaignTarget]:
         return []
 
 
+@registry.resolver("click_start_no_report")
+async def resolve_click_start_no_report() -> list[CampaignTarget]:
+    """Users who clicked CLICK_START but never clicked CLICK_EXAMPLE_REPORT
+    and have zero reports of any state."""
+    try:
+        start_events = _fetch_all(
+            "events", "user_id, timestamp",
+            filters={"event_type": EventType.CLICK_START.value},
+        )
+        if not start_events:
+            return []
+
+        latest_per_user: dict[int, datetime] = {}
+        for row in start_events:
+            uid = row["user_id"]
+            ts = datetime.fromisoformat(row["timestamp"])
+            if uid not in latest_per_user or ts > latest_per_user[uid]:
+                latest_per_user[uid] = ts
+
+        example_events = _fetch_all(
+            "events", "user_id",
+            filters={"event_type": EventType.CLICK_EXAMPLE_REPORT.value},
+        )
+        users_with_example = {r["user_id"] for r in example_events}
+
+        reports = _fetch_all("reports", "user_id")
+        users_with_reports = {r["user_id"] for r in reports}
+
+        exclude = users_with_example | users_with_reports
+        targets = [
+            CampaignTarget(user_id=uid, trigger_at=ts)
+            for uid, ts in latest_per_user.items()
+            if uid not in exclude
+        ]
+        logger.info(f"Resolver click_start_no_report: {len(targets)} targets")
+        return targets
+    except Exception as e:
+        logger.error(f"Error in click_start_no_report resolver: {e}", exc_info=True)
+        return []
+
+
 @registry.resolver("generated_report")
 async def resolve_generated_report() -> list[CampaignTarget]:
     """Users who have exactly one GENERATED report.
