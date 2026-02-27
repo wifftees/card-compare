@@ -1,4 +1,5 @@
 """Database queries for the notification campaigns system"""
+
 import logging
 from datetime import datetime
 from typing import Optional
@@ -45,7 +46,9 @@ async def get_campaign_steps(campaign_id: str) -> list[NotificationStep]:
         )
         return [NotificationStep(**row) for row in (resp.data or [])]
     except Exception as e:
-        logger.error(f"Error fetching steps for campaign {campaign_id}: {e}", exc_info=True)
+        logger.error(
+            f"Error fetching steps for campaign {campaign_id}: {e}", exc_info=True
+        )
         return []
 
 
@@ -62,11 +65,16 @@ async def get_active_user_notifications(campaign_id: str) -> list[UserNotificati
         )
         return [UserNotification(**row) for row in (resp.data or [])]
     except Exception as e:
-        logger.error(f"Error fetching active user_notifications for {campaign_id}: {e}", exc_info=True)
+        logger.error(
+            f"Error fetching active user_notifications for {campaign_id}: {e}",
+            exc_info=True,
+        )
         return []
 
 
-async def get_due_notifications(campaign_id: str, now: datetime) -> list[UserNotification]:
+async def get_due_notifications(
+    campaign_id: str, now: datetime
+) -> list[UserNotification]:
     """ACTIVE records whose next_send_at <= now."""
     try:
         resp = (
@@ -80,7 +88,9 @@ async def get_due_notifications(campaign_id: str, now: datetime) -> list[UserNot
         )
         return [UserNotification(**row) for row in (resp.data or [])]
     except Exception as e:
-        logger.error(f"Error fetching due notifications for {campaign_id}: {e}", exc_info=True)
+        logger.error(
+            f"Error fetching due notifications for {campaign_id}: {e}", exc_info=True
+        )
         return []
 
 
@@ -129,14 +139,18 @@ async def advance_notification(
     """Advance a notification to the next step after successful send."""
     now = datetime.utcnow().isoformat()
     try:
-        _supabase().table("user_notifications").update({
-            "current_step": new_step,
-            "last_sent_at": now,
-            "next_send_at": next_send_at.isoformat(),
-            "updated_at": now,
-        }).eq("id", notification_id).execute()
+        _supabase().table("user_notifications").update(
+            {
+                "current_step": new_step,
+                "last_sent_at": now,
+                "next_send_at": next_send_at.isoformat(),
+                "updated_at": now,
+            }
+        ).eq("id", notification_id).execute()
     except Exception as e:
-        logger.error(f"Error advancing notification {notification_id}: {e}", exc_info=True)
+        logger.error(
+            f"Error advancing notification {notification_id}: {e}", exc_info=True
+        )
 
 
 async def mark_notification_status(
@@ -145,10 +159,12 @@ async def mark_notification_status(
 ) -> None:
     now = datetime.utcnow().isoformat()
     try:
-        _supabase().table("user_notifications").update({
-            "status": status.value,
-            "updated_at": now,
-        }).eq("id", notification_id).execute()
+        _supabase().table("user_notifications").update(
+            {
+                "status": status.value,
+                "updated_at": now,
+            }
+        ).eq("id", notification_id).execute()
     except Exception as e:
         logger.error(
             f"Error marking notification {notification_id} as {status.value}: {e}",
@@ -165,10 +181,12 @@ async def cancel_notifications_for_users(
         return
     now = datetime.utcnow().isoformat()
     try:
-        _supabase().table("user_notifications").update({
-            "status": NotificationStatus.CANCELLED.value,
-            "updated_at": now,
-        }).eq("campaign_id", campaign_id).eq(
+        _supabase().table("user_notifications").update(
+            {
+                "status": NotificationStatus.CANCELLED.value,
+                "updated_at": now,
+            }
+        ).eq("campaign_id", campaign_id).eq(
             "status", NotificationStatus.ACTIVE.value
         ).in_("user_id", user_ids).execute()
     except Exception as e:

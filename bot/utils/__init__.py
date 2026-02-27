@@ -1,4 +1,5 @@
 """Bot utilities"""
+
 from bot.utils.loading import (
     LOADING_STICKER_ID,
     send_loading_sticker,

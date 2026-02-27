@@ -1,10 +1,15 @@
 """Core notification service — runs one cycle of the notification worker."""
+
 import logging
 from datetime import datetime, timedelta, timezone
 
 from aiogram import Bot
 from aiogram.enums import ParseMode
-from aiogram.exceptions import TelegramForbiddenError, TelegramNotFound, TelegramBadRequest
+from aiogram.exceptions import (
+    TelegramForbiddenError,
+    TelegramNotFound,
+    TelegramBadRequest,
+)
 
 from .models import (
     CampaignTarget,
@@ -42,7 +47,9 @@ class NotificationService:
         for campaign in campaigns:
             resolver = registry.get(campaign.id)
             if resolver is None:
-                logger.warning(f"No resolver registered for campaign '{campaign.id}', skipping")
+                logger.warning(
+                    f"No resolver registered for campaign '{campaign.id}', skipping"
+                )
                 continue
 
             try:
@@ -59,7 +66,9 @@ class NotificationService:
         targets: list[CampaignTarget] = await resolver()
         steps = await get_campaign_steps(campaign.id)
         if not steps:
-            logger.warning(f"Campaign '{campaign.id}' has no steps configured, skipping")
+            logger.warning(
+                f"Campaign '{campaign.id}' has no steps configured, skipping"
+            )
             return
 
         target_map: dict[int, CampaignTarget] = {t.user_id: t for t in targets}
@@ -67,7 +76,10 @@ class NotificationService:
         active_map: dict[int, UserNotification] = {r.user_id: r for r in active_records}
 
         enrolled, reset, cancelled = await self._sync_enrollments(
-            campaign.id, target_map, active_map, steps,
+            campaign.id,
+            target_map,
+            active_map,
+            steps,
         )
         if enrolled or reset or cancelled:
             logger.info(
@@ -121,7 +133,9 @@ class NotificationService:
             target = target_map[uid]
             if record.trigger_event_at != target.trigger_at:
                 next_send = target.trigger_at + first_delay
-                await upsert_user_notification(uid, campaign_id, target.trigger_at, next_send)
+                await upsert_user_notification(
+                    uid, campaign_id, target.trigger_at, next_send
+                )
                 reset_count += 1
 
         if users_to_cancel:
@@ -131,7 +145,9 @@ class NotificationService:
         for uid, target in target_map.items():
             if uid not in active_map:
                 next_send = target.trigger_at + first_delay
-                await upsert_user_notification(uid, campaign_id, target.trigger_at, next_send)
+                await upsert_user_notification(
+                    uid, campaign_id, target.trigger_at, next_send
+                )
                 enrolled_count += 1
                 logger.info(
                     f"Enrolled user {uid} in '{campaign_id}': "
@@ -175,7 +191,9 @@ class NotificationService:
         """Returns True on success, False if the user is unreachable."""
         try:
             await self._bot.send_message(
-                chat_id=user_id, text=text, parse_mode=ParseMode.HTML,
+                chat_id=user_id,
+                text=text,
+                parse_mode=ParseMode.HTML,
             )
             return True
         except (TelegramForbiddenError, TelegramNotFound):
@@ -188,5 +206,7 @@ class NotificationService:
             logger.error(f"Bad request sending to user {user_id}: {e}", exc_info=True)
             return True
         except Exception as e:
-            logger.error(f"Transient error sending to user {user_id}: {e}", exc_info=True)
+            logger.error(
+                f"Transient error sending to user {user_id}: {e}", exc_info=True
+            )
             return True

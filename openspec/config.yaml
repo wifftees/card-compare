@@ -1,0 +1,175 @@
+schema: spec-driven
+
+context: |
+  ## Tech stack
+  - Python 3.10+ (async/await, type hints, Pydantic v2)
+  - Telegram bot: aiogram 3.x (routers, middleware, FSM)
+  - Web server: aiohttp (webhook endpoints)
+  - Browser automation: Playwright (Wildberries Seller platform scraping)
+  - Database: Supabase (Postgres) via `supabase-py` client
+  - Payments: YooKassa REST API (create payment + webhooks)
+  - Runtime: Docker/Docker Compose (single container running bot + webhook server)
+
+  ## Architecture / patterns
+  - Single async process (`main.py:Application`) orchestrates:
+    - aiogram polling (Telegram updates)
+    - background workers (report queue, notification cycles, WB auth check, periodic state save, periodic browser restart)
+    - embedded aiohttp server for webhooks (same process)
+  - Routers per feature in `bot/handlers/*`; a catch-all handler lives in `bot/handlers/common.py`.
+  - Middleware (`bot/middlewares/user_middleware.py`) ensures a `users` row exists and injects `user: database.models.User` into handlers.
+  - Thin data-access layer in `database/queries.py` (calls `supabase.table(...).select/insert/update/upsert`).
+  - Report generation pipeline:
+    - User submits article IDs → task enqueued (`bot/queue.py`)
+    - Worker runs WB automation (real) or mock mode (feature-flag driven)
+    - Result processor sends generated file, then deducts 1 report from balance
+
+  ## Directory structure (high-level)
+  - `main.py`: app entrypoint, background tasks, starts bot polling + webhook server
+  - `api/`: aiohttp webhook server (`api/server.py`)
+  - `bot/`: aiogram configuration, routers, FSM states, middlewares, queue, UI helpers
+    - `bot/handlers/`: Telegram command/callback handlers (user flows + admin)
+    - `bot/middlewares/`: dependency injection (load/create user)
+    - `bot/utils/`: status messages, loading sticker, etc.
+  - `database/`: Supabase client + Pydantic models + query functions
+  - `payment/`: YooKassa client + payment business logic + webhook processing + in-memory invoice cache
+  - `scraper/`: Playwright client/services for Wildberries Seller reports + auth/state storage
+  - `notifications/`: campaigns engine (DB-driven campaigns/steps), resolvers, sending worker
+  - `storage/`: persisted browser state + downloaded artifacts (mounted volume in Docker)
+  - `utils/`: logging setup
+
+  ## Database schema (Supabase tables + columns)
+  Note: schema is inferred from code usage (Pydantic models + query payloads).
+
+  - `users`
+    - `id` (Telegram user_id; primary key)
+    - `username`
+    - `created_at`
+    - `reports_balance`
+    - `last_active_at`
+    - `invited_by` (referrer Telegram user_id; nullable)
+    - `referral_balance` (numeric; default 0)
+  - `events`
+    - `id`
+    - `user_id`
+    - `event_type` (see `database.models.EventType`)
+    - `timestamp`
+  - `feature_flags`
+    - `name`
+    - `enabled`
+  - `prices`
+    - `option` (see `database.models.ProductOption`)
+    - `price` (RUB)
+    - `reports_amount`
+  - `payments`
+    - `id`
+    - `user_id`
+    - `total_price` (RUB)
+    - `option` (ProductOption)
+    - `status` (see `database.models.PaymentStatus`)
+    - `external_invoice_id` (YooKassa order_id UUID)
+    - `confirmation_url` (YooKassa payment link)
+    - `telegram_payment_charge_id` (legacy; written by code)
+    - `provider_payment_charge_id` (legacy; written by code)
+    - `created_at`
+    - `updated_at`
+  - `reports`
+    - `id`
+    - `user_id`
+    - `articles` (comma-separated string stored for history)
+    - `state` (see `database.models.ReportState`)
+    - `created_at`
+    - `updated_at`
+
+  - `notification_campaigns`
+    - `id` (string campaign_id; must match a resolver id in `notifications/resolvers.py`)
+    - `name`
+    - `message_template` (HTML)
+    - `enabled`
+    - `repeat_last_step`
+    - `created_at`
+  - `notification_steps`
+    - `id`
+    - `campaign_id`
+    - `step_order`
+    - `delay_seconds`
+  - `user_notifications`
+    - `id`
+    - `user_id`
+    - `campaign_id`
+    - `status` (ACTIVE/BLOCKED/COMPLETED/CANCELLED)
+    - `current_step`
+    - `trigger_event_at`
+    - `last_sent_at` (nullable)
+    - `next_send_at`
+    - `created_at`
+    - `updated_at`
+    - Unique constraint implied by upsert: (`user_id`, `campaign_id`)
+
+  ## API handlers / endpoints
+  ### HTTP (aiohttp)
+  - `POST /api/payment/yookassa`
+    - `api.server.yookassa_webhook_handler` → `payment.webhook.handle_yookassa_webhook`
+    - Always returns HTTP 200 to prevent YooKassa retries.
+  - `GET /health`
+    - `api.server.health_check_handler`
+
+  ### Telegram “endpoints” (aiogram routers)
+  - `/start`
+    - `bot.handlers.start.cmd_start`
+    - Deep-link `"/start <referrer_id>"` is parsed; `invited_by` exists in DB model/table.
+  - Callback queries:
+    - `"back_to_start"` → start menu
+    - `"compare_cards"` → start report flow
+    - `"show_example_report"` → sends `/app/storage/example_report.zip`
+    - `"balance"` → shows balance + products
+    - `"buy:<OPTION>"` and `"upgrade:<OPTION>"` where OPTION ∈ `SINGLE|PACKET|PACKET_FIRST|PACKET_SECOND`
+    - `"cancel_payment"`, `"cancel_refill"`, `"cancel_compare"`
+    - `"referral_link"` → shows t.me deep link + referral stats
+  - Report flow input:
+    - `CompareCardsStates.waiting_for_articles` message handler parses comma-separated integers
+  - Admin:
+    - `/admin` command + multiple callbacks under `AdminStates.*` for broadcasts and conversion analytics
+  - Auth code:
+    - regex `^\d{4,6}$` message handler for admin-only WB SMS codes (`bot/handlers/auth_code.py`)
+
+  ## Business rules (from code)
+  - Report request input:
+    - 2..5 article IDs, integers, comma-separated, unique (duplicates rejected)
+  - Balance gating:
+    - If `user.reports_balance <= 0`, report generation is blocked (user can view example report)
+    - On successful report delivery, balance is decremented by 1 (`update_balance(user_id, -1)`)
+  - Feature flags in DB:
+    - `IS_WB_USE_MOCK` toggles full mock report processing
+    - `IS_COMPARE_CARDS_MOCK` toggles mock compare-cards stage (still uses Playwright)
+  - Payment:
+    - Products are configured in DB (`prices` table); payments are persisted in `payments`.
+    - YooKassa payment links are cached in-memory for 1 hour per (`user_id`, `option`) to avoid duplicate invoices.
+    - Webhook `payment.succeeded` completes payment idempotently and credits `reports_amount` to user balance.
+    - Webhook `payment.canceled` marks payment as canceled.
+  - Referral:
+    - If buyer has `invited_by`, inviter gets bonus = ceil(payment.total_price * 0.2) credited to `users.referral_balance`.
+  - Notifications (campaign engine):
+    - Campaigns/steps are DB-driven; resolvers compute the current target audience.
+    - If a user blocks the bot / is unreachable, status is marked `BLOCKED`.
+    - Campaign can `repeat_last_step` or finish as `COMPLETED`.
+  - Wildberries scraping:
+    - Playwright navigates seller analytics pages and drives a staged workflow; status stages are pushed back to Telegram via status message edits.
+
+# Project context (optional)
+# This is shown to AI when creating artifacts.
+# Add your tech stack, conventions, style guides, domain knowledge, etc.
+# Example:
+#   context: |
+#     Tech stack: TypeScript, React, Node.js
+#     We use conventional commits
+#     Domain: e-commerce platform
+
+# Per-artifact rules (optional)
+# Add custom rules for specific artifacts.
+# Example:
+#   rules:
+#     proposal:
+#       - Keep proposals under 500 words
+#       - Always include a "Non-goals" section
+#     tasks:
+#       - Break tasks into chunks of max 2 hours

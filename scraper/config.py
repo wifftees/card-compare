@@ -1,10 +1,12 @@
 """Scraper configuration"""
+
 from dataclasses import dataclass
 
 
 @dataclass
 class WBConfig:
     """Configuration for Wildberries scraper"""
+
     phone: str
     headless: bool = True
     slow_mo: int = 100

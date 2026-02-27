@@ -1,4 +1,5 @@
 """Status message utilities for indicating report generation progress"""
+
 import logging
 from dataclasses import dataclass
 
@@ -13,6 +14,7 @@ TOTAL_STAGES = 14
 @dataclass(frozen=True)
 class Stage:
     """Definition of a single processing stage"""
+
     emoji: str
     description: str
 

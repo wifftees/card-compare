@@ -1,4 +1,5 @@
 """Pydantic models for the notification campaigns system"""
+
 from datetime import datetime
 from typing import Optional
 from enum import Enum
@@ -52,5 +53,6 @@ class UserNotification(BaseModel):
 
 class CampaignTarget(BaseModel):
     """Returned by resolvers: who qualifies and when their trigger happened."""
+
     user_id: int
     trigger_at: datetime

@@ -1,4 +1,5 @@
 """Admin broadcast handlers"""
+
 import asyncio
 import logging
 from collections.abc import Awaitable, Callable
@@ -54,55 +55,86 @@ CONVERSION_CATEGORIES: dict[int, tuple[str, ConversionSource]] = {
     6: ('Выбрали опцию "Пакет"', [EventType.CLICK_PACKET]),
     7: ('Выбрали опцию "Пакет 1"', [EventType.CLICK_PACKET_FIRST]),
     8: ('Выбрали опцию "Пакет 2"', [EventType.CLICK_PACKET_SECOND]),
-    9: ("Выбрали любую из опций", [EventType.CLICK_PACKET, EventType.CLICK_PACKET_FIRST, EventType.CLICK_PACKET_SECOND, EventType.CLICK_SINGLE]),
+    9: (
+        "Выбрали любую из опций",
+        [
+            EventType.CLICK_PACKET,
+            EventType.CLICK_PACKET_FIRST,
+            EventType.CLICK_PACKET_SECOND,
+            EventType.CLICK_SINGLE,
+        ],
+    ),
     10: ("Сделали покупку", [EventType.PAY_FOR_OPTION]),
     11: ('Нажали "Реферальная ссылка"', [EventType.CLICK_REFERRAL_LINK]),
-    12: ("Использовали пробный отчет, но не покупали", get_users_one_report_no_payments),
+    12: (
+        "Использовали пробный отчет, но не покупали",
+        get_users_one_report_no_payments,
+    ),
 }
 
 
 def _build_main_menu_keyboard() -> InlineKeyboardMarkup:
     """Build main admin menu keyboard."""
-    return InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(
-            text="📊 Посмотреть конверсии",
-            callback_data="admin_conversions",
-        )],
-        [InlineKeyboardButton(
-            text="👤 Показать ники пользователей",
-            callback_data="admin_usernames",
-        )],
-        [InlineKeyboardButton(
-            text="📨 Сделать рассылку",
-            callback_data="admin_broadcast",
-        )],
-        [InlineKeyboardButton(
-            text="❌ Выйти из админки",
-            callback_data="admin_exit",
-        )],
-    ])
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text="📊 Посмотреть конверсии",
+                    callback_data="admin_conversions",
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    text="👤 Показать ники пользователей",
+                    callback_data="admin_usernames",
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    text="📨 Сделать рассылку",
+                    callback_data="admin_broadcast",
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    text="❌ Выйти из админки",
+                    callback_data="admin_exit",
+                )
+            ],
+        ]
+    )
 
 
 def _build_group_selection_keyboard() -> InlineKeyboardMarkup:
     """Build inline keyboard for selecting a user segment."""
-    return InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(
-            text="👤 Без отчетов",
-            callback_data="admin_group:no_activity",
-        )],
-        [InlineKeyboardButton(
-            text="📄 Использовали пробный",
-            callback_data="admin_group:used_trial",
-        )],
-        [InlineKeyboardButton(
-            text="💳 Купили 1 отчет",
-            callback_data="admin_group:bought_single",
-        )],
-        [InlineKeyboardButton(
-            text="⬅️ Главное меню",
-            callback_data="admin_back_to_main",
-        )],
-    ])
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text="👤 Без отчетов",
+                    callback_data="admin_group:no_activity",
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    text="📄 Использовали пробный",
+                    callback_data="admin_group:used_trial",
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    text="💳 Купили 1 отчет",
+                    callback_data="admin_group:bought_single",
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    text="⬅️ Главное меню",
+                    callback_data="admin_back_to_main",
+                )
+            ],
+        ]
+    )
 
 
 # ── /admin command ──────────────────────────────────────────────────────
@@ -122,8 +154,7 @@ async def admin_command(message: Message, state: FSMContext):
     await state.set_state(AdminStates.main_menu)
 
     await message.answer(
-        "🔧 <b>Админ-панель</b>\n\n"
-        "Выберите действие:",
+        "🔧 <b>Админ-панель</b>\n\nВыберите действие:",
         reply_markup=_build_main_menu_keyboard(),
     )
 
@@ -173,10 +204,21 @@ async def group_selected(callback: CallbackQuery, state: FSMContext):
     await state.set_state(AdminStates.entering_message)
     logger.info(f"[ADMIN] User {admin_id} → entering_message for group '{group_key}'")
 
-    keyboard = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="⬅️ Назад к выбору группы", callback_data="admin_back_to_broadcast")],
-        [InlineKeyboardButton(text="❌ Выйти из админки", callback_data="admin_exit")],
-    ])
+    keyboard = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text="⬅️ Назад к выбору группы",
+                    callback_data="admin_back_to_broadcast",
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    text="❌ Выйти из админки", callback_data="admin_exit"
+                )
+            ],
+        ]
+    )
 
     await callback.message.answer(
         f"📝 <b>Группа:</b> {GROUP_LABELS[group_key]}\n"
@@ -202,10 +244,16 @@ async def message_entered(message: Message, state: FSMContext):
     await state.update_data(broadcast_text=broadcast_text)
     await state.set_state(AdminStates.confirming_message)
 
-    keyboard = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="✅ Подтвердить отправку", callback_data="admin_confirm")],
-        [InlineKeyboardButton(text="⬅️ Назад", callback_data="admin_cancel")],
-    ])
+    keyboard = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text="✅ Подтвердить отправку", callback_data="admin_confirm"
+                )
+            ],
+            [InlineKeyboardButton(text="⬅️ Назад", callback_data="admin_cancel")],
+        ]
+    )
 
     await message.answer(
         "📨 <b>Предпросмотр сообщения:</b>\n\n"
@@ -302,10 +350,21 @@ async def cancel_broadcast(callback: CallbackQuery, state: FSMContext):
 
     await state.set_state(AdminStates.entering_message)
 
-    keyboard = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="⬅️ Назад к выбору группы", callback_data="admin_back_to_broadcast")],
-        [InlineKeyboardButton(text="❌ Выйти из админки", callback_data="admin_exit")],
-    ])
+    keyboard = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text="⬅️ Назад к выбору группы",
+                    callback_data="admin_back_to_broadcast",
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    text="❌ Выйти из админки", callback_data="admin_exit"
+                )
+            ],
+        ]
+    )
 
     await callback.message.answer(
         f"📝 <b>Группа:</b> {GROUP_LABELS.get(group_key, '—')}\n\n"
@@ -319,10 +378,14 @@ async def cancel_broadcast(callback: CallbackQuery, state: FSMContext):
 
 def _build_conversion_categories_text() -> str:
     """Build the numbered list of conversion categories."""
-    lines = ["<b>Выберите категории пользователей, для которых посчитать конверсию</b>\n"]
+    lines = [
+        "<b>Выберите категории пользователей, для которых посчитать конверсию</b>\n"
+    ]
     for num, (label, _) in CONVERSION_CATEGORIES.items():
         lines.append(f"{num}. {label}")
-    lines.append("\nВведите номера категорий через запятую.\n💡 Пример: <code>1,7</code>")
+    lines.append(
+        "\nВведите номера категорий через запятую.\n💡 Пример: <code>1,7</code>"
+    )
     return "\n".join(lines)
 
 
@@ -334,9 +397,15 @@ async def conversions_start(callback: CallbackQuery, state: FSMContext):
     await callback.answer()
     await state.set_state(AdminStates.waiting_for_conversion_categories)
 
-    keyboard = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="⬅️ Меню админки", callback_data="admin_back_to_main")],
-    ])
+    keyboard = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text="⬅️ Меню админки", callback_data="admin_back_to_main"
+                )
+            ],
+        ]
+    )
 
     await callback.message.answer(
         _build_conversion_categories_text(),
@@ -345,7 +414,7 @@ async def conversions_start(callback: CallbackQuery, state: FSMContext):
 
 
 @router.message(AdminStates.waiting_for_conversion_categories, F.text)
-async def conversions_process(message: Message, state: FSMContext):
+async def conversions_process(message: Message, _state: FSMContext):
     """Validate input, count users, and display conversion results."""
     admin_id = message.from_user.id
     args_text = (message.text or "").strip()
@@ -396,7 +465,9 @@ async def conversions_process(message: Message, state: FSMContext):
         )
         return
 
-    logger.info(f"[ADMIN] User {admin_id} requested conversions for categories {numbers}")
+    logger.info(
+        f"[ADMIN] User {admin_id} requested conversions for categories {numbers}"
+    )
 
     # Fetch counts
     counts: dict[int, int] = {}
@@ -426,9 +497,15 @@ async def conversions_process(message: Message, state: FSMContext):
 
     lines.append("\n💡 Чтобы еще раз посчитать конверсию, введите числа.")
 
-    keyboard = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="⬅️ Меню админки", callback_data="admin_back_to_main")],
-    ])
+    keyboard = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text="⬅️ Меню админки", callback_data="admin_back_to_main"
+                )
+            ],
+        ]
+    )
 
     await message.answer("\n".join(lines), reply_markup=keyboard)
 
@@ -455,9 +532,15 @@ async def usernames_start(callback: CallbackQuery, state: FSMContext):
     await callback.answer()
     await state.set_state(AdminStates.waiting_for_usernames_category)
 
-    keyboard = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="⬅️ Меню админки", callback_data="admin_back_to_main")],
-    ])
+    keyboard = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text="⬅️ Меню админки", callback_data="admin_back_to_main"
+                )
+            ],
+        ]
+    )
 
     await callback.message.answer(
         _build_usernames_categories_text(),
@@ -466,7 +549,7 @@ async def usernames_start(callback: CallbackQuery, state: FSMContext):
 
 
 @router.message(AdminStates.waiting_for_usernames_category, F.text)
-async def usernames_process(message: Message, state: FSMContext):
+async def usernames_process(message: Message, _state: FSMContext):
     """Validate single category number and list usernames."""
     admin_id = message.from_user.id
     args_text = (message.text or "").strip()
@@ -492,8 +575,7 @@ async def usernames_process(message: Message, state: FSMContext):
     if num not in CONVERSION_CATEGORIES:
         max_num = max(CONVERSION_CATEGORIES)
         await message.answer(
-            f"❌ <b>Неверный номер: {num}</b>\n\n"
-            f"Допустимые номера от 1 до {max_num}."
+            f"❌ <b>Неверный номер: {num}</b>\n\nДопустимые номера от 1 до {max_num}."
         )
         return
 
@@ -507,12 +589,17 @@ async def usernames_process(message: Message, state: FSMContext):
         user_ids = await get_unique_user_ids_by_events(source)
 
     if not user_ids:
-        keyboard = InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton(text="⬅️ Меню админки", callback_data="admin_back_to_main")],
-        ])
+        keyboard = InlineKeyboardMarkup(
+            inline_keyboard=[
+                [
+                    InlineKeyboardButton(
+                        text="⬅️ Меню админки", callback_data="admin_back_to_main"
+                    )
+                ],
+            ]
+        )
         await message.answer(
-            f"<b>{num}. {label}</b>\n\n"
-            "В этой категории нет пользователей.",
+            f"<b>{num}. {label}</b>\n\nВ этой категории нет пользователей.",
             reply_markup=keyboard,
         )
         return
@@ -549,9 +636,15 @@ async def usernames_process(message: Message, state: FSMContext):
     if current_lines:
         chunks.append("\n".join(current_lines))
 
-    keyboard = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="⬅️ Меню админки", callback_data="admin_back_to_main")],
-    ])
+    keyboard = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text="⬅️ Меню админки", callback_data="admin_back_to_main"
+                )
+            ],
+        ]
+    )
 
     for i, chunk in enumerate(chunks):
         text = header + chunk if i == 0 else chunk
@@ -575,8 +668,7 @@ async def back_to_main(callback: CallbackQuery, state: FSMContext):
     await state.set_state(AdminStates.main_menu)
 
     await callback.message.answer(
-        "🔧 <b>Админ-панель</b>\n\n"
-        "Выберите действие:",
+        "🔧 <b>Админ-панель</b>\n\nВыберите действие:",
         reply_markup=_build_main_menu_keyboard(),
     )
 
@@ -584,7 +676,9 @@ async def back_to_main(callback: CallbackQuery, state: FSMContext):
 @router.callback_query(F.data == "admin_back_to_broadcast")
 async def back_to_broadcast(callback: CallbackQuery, state: FSMContext):
     """Return to group selection screen for broadcast."""
-    logger.info(f"[ADMIN] User {callback.from_user.id} navigated back to group selection")
+    logger.info(
+        f"[ADMIN] User {callback.from_user.id} navigated back to group selection"
+    )
     await callback.answer()
     await state.set_state(AdminStates.choosing_group)
 
@@ -598,9 +692,9 @@ async def back_to_broadcast(callback: CallbackQuery, state: FSMContext):
 async def exit_admin(callback: CallbackQuery, state: FSMContext, user: User):
     """Exit admin panel – clear state and show start menu."""
     from bot.handlers.start import back_to_start_callback
-    
+
     await state.clear()
     await callback.message.delete()
     logger.info(f"[ADMIN] User {callback.from_user.id} exited admin panel")
-    
+
     await back_to_start_callback(callback, user)

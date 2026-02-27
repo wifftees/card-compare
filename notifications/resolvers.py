@@ -5,6 +5,7 @@ the timestamp that serves as the starting point for the notification schedule.
 
 Import this module at startup so the decorators register the resolvers.
 """
+
 import logging
 from datetime import datetime
 
@@ -44,7 +45,8 @@ async def resolve_click_example_report() -> list[CampaignTarget]:
     """Users who clicked CLICK_EXAMPLE_REPORT but have zero GENERATED reports."""
     try:
         events = _fetch_all(
-            "events", "user_id, timestamp",
+            "events",
+            "user_id, timestamp",
             filters={"event_type": EventType.CLICK_EXAMPLE_REPORT.value},
         )
         if not events:
@@ -58,7 +60,8 @@ async def resolve_click_example_report() -> list[CampaignTarget]:
                 latest_per_user[uid] = ts
 
         reports = _fetch_all(
-            "reports", "user_id",
+            "reports",
+            "user_id",
             filters={"state": ReportState.GENERATED.value},
         )
         users_with_reports = {r["user_id"] for r in reports}
@@ -81,7 +84,8 @@ async def resolve_click_start_no_report() -> list[CampaignTarget]:
     and have zero reports of any state."""
     try:
         start_events = _fetch_all(
-            "events", "user_id, timestamp",
+            "events",
+            "user_id, timestamp",
             filters={"event_type": EventType.CLICK_START.value},
         )
         if not start_events:
@@ -95,7 +99,8 @@ async def resolve_click_start_no_report() -> list[CampaignTarget]:
                 latest_per_user[uid] = ts
 
         example_events = _fetch_all(
-            "events", "user_id",
+            "events",
+            "user_id",
             filters={"event_type": EventType.CLICK_EXAMPLE_REPORT.value},
         )
         users_with_example = {r["user_id"] for r in example_events}
@@ -124,7 +129,8 @@ async def resolve_generated_report() -> list[CampaignTarget]:
     """
     try:
         reports = _fetch_all(
-            "reports", "user_id, updated_at",
+            "reports",
+            "user_id, updated_at",
             filters={"state": ReportState.GENERATED.value},
         )
         if not reports:
