@@ -10,7 +10,9 @@ from aiogram.exceptions import (
     TelegramNotFound,
     TelegramBadRequest,
 )
+from aiogram.types import InlineKeyboardMarkup
 
+from .keyboards import get_campaign_keyboard
 from .models import (
     CampaignTarget,
     NotificationCampaign,
@@ -167,7 +169,11 @@ class NotificationService:
         logger.info(
             f"Sending '{campaign.id}' step {notif.current_step} to user {notif.user_id}"
         )
-        success = await self._try_send(notif.user_id, campaign.message_template)
+        success = await self._try_send(
+            notif.user_id,
+            campaign.message_template,
+            reply_markup=get_campaign_keyboard(campaign.id),
+        )
 
         if not success:
             await mark_notification_status(notif.id, NotificationStatus.BLOCKED)
@@ -187,13 +193,19 @@ class NotificationService:
 
         return True
 
-    async def _try_send(self, user_id: int, text: str) -> bool:
+    async def _try_send(
+        self,
+        user_id: int,
+        text: str,
+        reply_markup: InlineKeyboardMarkup | None = None,
+    ) -> bool:
         """Returns True on success, False if the user is unreachable."""
         try:
             await self._bot.send_message(
                 chat_id=user_id,
                 text=text,
                 parse_mode=ParseMode.HTML,
+                reply_markup=reply_markup,
             )
             return True
         except (TelegramForbiddenError, TelegramNotFound):

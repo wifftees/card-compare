@@ -22,6 +22,7 @@ ENV/
 .vscode/
 .idea/
 .cursor/
+.serena/
 *.swp
 *.swo
 .DS_Store

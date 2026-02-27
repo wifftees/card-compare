@@ -83,9 +83,7 @@ class PaymentService:
         # Step 2: Get price configuration from database
         price_config = await get_price_by_option(option)
         if price_config is None:
-            raise ValueError(
-                f"Price configuration not found for option {option.value}"
-            )
+            raise ValueError(f"Price configuration not found for option {option.value}")
 
         logger.info(
             f"💰 [PAYMENT] Price: {price_config.price} RUB, reports_amount: {price_config.reports_amount}"
