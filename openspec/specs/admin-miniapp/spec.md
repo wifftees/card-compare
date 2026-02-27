@@ -54,3 +54,49 @@ The endpoint MUST return the list of usernames in that category.
 - **WHEN** an admin submits category `5`
 - **THEN** the server responds with a list of usernames for category `5`
 
+### Requirement: Broadcast tab in Admin Mini App
+
+The Admin Mini App MUST include a third tab labeled **Рассылка** (Broadcast), displayed alongside Обзор and Конверсии. All user-facing text in this tab MUST be in Russian.
+
+The Broadcast tab MUST provide:
+1. A category selector (single-select) populated with the same categories as the Конверсии tab (from `GET /api/admin/categories`).
+2. A text input (or textarea) for the message to send.
+3. A send button that triggers `POST /api/admin/broadcast` with the selected category and message.
+
+Before sending, the UI MAY show a confirmation step (e.g. preview + "Подтвердить отправку"). After sending, the UI MUST display the result (sent count, failed count) in Russian.
+
+#### Scenario: Admin selects category and sends broadcast
+
+- **WHEN** an admin opens the Broadcast tab
+- **THEN** the admin sees a category dropdown and a message input
+- **AND WHEN** the admin selects a category, types a message, and clicks send (and confirms if applicable)
+- **THEN** the client calls `POST /api/admin/broadcast` with `{ "category": N, "message": "..." }`
+- **AND THEN** the client displays the result (e.g. "Отправлено: X, Ошибок: Y")
+
+#### Scenario: Broadcast tab uses same categories as Conversions
+
+- **WHEN** the Admin Mini App loads
+- **THEN** the Broadcast tab category selector is populated from the same `GET /api/admin/categories` response used by the Конверсии tab
+- **AND THEN** category labels are displayed in Russian (as returned by the API)
+
+### Requirement: Prices tab in Admin Mini App
+
+The Admin Mini App MUST include a tab labeled **Цены** displayed alongside existing tabs (e.g. Обзор, Конверсии, Рассылка). All user-facing text in this tab MUST be in Russian.
+
+The Prices tab MUST:
+1. Load the current `prices` table rows from `GET /api/admin/prices`.
+2. Render a table with one row per `ProductOption`.
+3. Allow editing `price` (RUB integer) and `reports_amount` (integer) values.
+4. Provide an explicit save action that sends all edited rows to `POST /api/admin/prices`.
+5. Display a Russian success/error message after attempting to save.
+
+#### Scenario: Admin views current prices
+- **WHEN** an admin opens the Prices tab
+- **THEN** the client calls `GET /api/admin/prices`
+- **AND THEN** the client displays a table of price rows
+
+#### Scenario: Admin edits and saves prices
+- **WHEN** an admin edits one or more table cells and clicks “Сохранить”
+- **THEN** the client calls `POST /api/admin/prices` with the updated rows
+- **AND THEN** the client displays the save result in Russian
+

@@ -204,6 +204,66 @@ body {
   white-space: pre-wrap;
   font-family: monospace;
 }
+.broadcast-form {
+  margin-bottom: 16px;
+}
+.broadcast-form label {
+  display: block;
+  margin-bottom: 8px;
+  font-size: 0.9rem;
+  font-weight: 600;
+}
+.broadcast-form sl-select,
+.broadcast-form sl-textarea {
+  width: 100%;
+  margin-bottom: 12px;
+}
+.broadcast-result {
+  margin-top: 16px;
+  padding: 12px;
+  background: var(--tg-secondary-bg);
+  border-radius: 8px;
+  font-size: 0.9rem;
+}
+.prices-table {
+  width: 100%;
+  border-collapse: collapse;
+  background: var(--tg-secondary-bg);
+  border-radius: 8px;
+  overflow: hidden;
+  margin-bottom: 16px;
+}
+.prices-table th,
+.prices-table td {
+  padding: 10px;
+  text-align: left;
+  border-bottom: 1px solid var(--tg-hint);
+}
+.prices-table th {
+  background: var(--tg-link);
+  color: white;
+  font-weight: 600;
+  font-size: 0.85rem;
+}
+.prices-table td {
+  font-size: 0.9rem;
+}
+.prices-table tr:last-child td {
+  border-bottom: none;
+}
+.prices-table input[type="number"] {
+  width: 100%;
+  padding: 6px 8px;
+  border: 1px solid var(--tg-hint);
+  border-radius: 4px;
+  font-size: 0.9rem;
+  background: var(--tg-bg);
+  color: var(--tg-text);
+}
+.prices-table input[type="number"]:focus {
+  outline: none;
+  border-color: var(--tg-link);
+}
 </style>
 </head>
 <body>
@@ -222,6 +282,8 @@ body {
 <sl-tab-group>
   <sl-tab slot="nav" panel="overview">Обзор</sl-tab>
   <sl-tab slot="nav" panel="conversions">Конверсии</sl-tab>
+  <sl-tab slot="nav" panel="broadcast">Рассылка</sl-tab>
+  <sl-tab slot="nav" panel="prices">Цены</sl-tab>
 
   <sl-tab-panel name="overview">
     <div class="tab-content active" id="overview-tab">
@@ -262,6 +324,43 @@ body {
       </div>
     </div>
   </sl-tab-panel>
+
+  <sl-tab-panel name="broadcast">
+    <div class="tab-content" id="broadcast-tab">
+      <div class="section-title">Рассылка сообщения</div>
+      <div class="broadcast-form">
+        <label>Выберите категорию пользователей:</label>
+        <sl-select id="broadcast-category-select" placeholder="Выберите категорию..." value="" style="width: 100%; margin-bottom: 12px;"></sl-select>
+        <label>Текст сообщения:</label>
+        <sl-textarea id="broadcast-message" placeholder="Введите сообщение для рассылки..." rows="5" style="width: 100%; margin-bottom: 12px;"></sl-textarea>
+        <sl-button id="broadcast-send-btn" variant="primary" size="medium">
+          <sl-icon slot="prefix" name="send"></sl-icon>
+          Отправить
+        </sl-button>
+      </div>
+      <div id="broadcast-result" class="broadcast-result" style="display: none;"></div>
+    </div>
+  </sl-tab-panel>
+
+  <sl-tab-panel name="prices">
+    <div class="tab-content" id="prices-tab">
+      <div class="section-title">Управление ценами</div>
+      <div class="refresh-bar">
+        <sl-button id="prices-refresh" variant="primary" size="small">
+          <sl-icon slot="prefix" name="arrow-clockwise"></sl-icon>
+          Обновить
+        </sl-button>
+      </div>
+      <div id="prices-content"></div>
+      <div style="margin-top: 16px;">
+        <sl-button id="prices-save-btn" variant="success" size="medium">
+          <sl-icon slot="prefix" name="check-circle"></sl-icon>
+          Сохранить
+        </sl-button>
+      </div>
+      <div id="prices-result" class="broadcast-result" style="display: none; margin-top: 16px;"></div>
+    </div>
+  </sl-tab-panel>
 </sl-tab-group>
 
 <script>
@@ -279,6 +378,7 @@ body {
   var categories = [];
   var overviewData = null;
   var conversionsData = null;
+  var pricesData = [];
 
   // Range selector
   var rangeButtons = document.querySelectorAll(".range-selector sl-button");
@@ -293,6 +393,7 @@ body {
       } else if (document.getElementById("conversions-tab").classList.contains("active")) {
         document.getElementById("conversions-refresh").click();
       }
+      // broadcast tab does not use range
     });
   });
   // Set default
@@ -309,6 +410,14 @@ body {
       document.getElementById("overview-tab").classList.add("active");
     } else if (panelName === "conversions") {
       document.getElementById("conversions-tab").classList.add("active");
+    } else if (panelName === "broadcast") {
+      document.getElementById("broadcast-tab").classList.add("active");
+    } else if (panelName === "prices") {
+      document.getElementById("prices-tab").classList.add("active");
+      // Auto-load prices if not already loaded
+      if (!pricesData || pricesData.length === 0) {
+        loadPrices();
+      }
     }
   });
 
@@ -647,6 +756,7 @@ body {
       categories = data.categories;
       var select = document.getElementById("categories-select");
       var usernameSelect = document.getElementById("username-category-select");
+      var broadcastSelect = document.getElementById("broadcast-category-select");
       categories.forEach(function (cat) {
         var option = document.createElement("sl-option");
         option.value = cat.category;
@@ -657,6 +767,11 @@ body {
         usernameOption.value = cat.category;
         usernameOption.textContent = cat.category + ". " + cat.label;
         usernameSelect.appendChild(usernameOption);
+        
+        var broadcastOption = document.createElement("sl-option");
+        broadcastOption.value = cat.category;
+        broadcastOption.textContent = cat.category + ". " + cat.label;
+        broadcastSelect.appendChild(broadcastOption);
       });
     });
   }
@@ -695,6 +810,34 @@ body {
       .finally(function () { btn.loading = false; });
   });
 
+  // Broadcast: send immediately on button click
+  document.getElementById("broadcast-send-btn").addEventListener("click", function () {
+    var categorySelect = document.getElementById("broadcast-category-select");
+    var messageInput = document.getElementById("broadcast-message");
+    var categoryVal = categorySelect.value;
+    var messageVal = (messageInput.value || "").trim();
+    if (!categoryVal) {
+      showError("Выберите категорию.");
+      return;
+    }
+    if (!messageVal) {
+      showError("Введите текст сообщения.");
+      return;
+    }
+    var categoryNum = parseInt(categoryVal, 10);
+    var btn = document.getElementById("broadcast-send-btn");
+    btn.loading = true;
+    document.getElementById("broadcast-result").style.display = "none";
+    adminFetch("/api/admin/broadcast", "POST", { category: categoryNum, message: messageVal })
+      .then(function (data) {
+        var resultDiv = document.getElementById("broadcast-result");
+        resultDiv.textContent = "Рассылка завершена. Отправлено: " + data.sent + ", Ошибок: " + data.failed;
+        resultDiv.style.display = "block";
+      })
+      .catch(function () { /* error already shown */ })
+      .finally(function () { btn.loading = false; });
+  });
+
   // Usernames
   document.getElementById("usernames-btn").addEventListener("click", function () {
     var select = document.getElementById("username-category-select");
@@ -727,6 +870,147 @@ body {
         resultDiv.style.display = "block";
       })
       .catch(function () { /* error already shown */ })
+      .finally(function () { btn.loading = false; });
+  });
+
+  // Prices: render table
+  function renderPrices(prices) {
+    var container = document.getElementById("prices-content");
+    container.innerHTML = "";
+    
+    if (!prices || prices.length === 0) {
+      container.innerHTML = "<p style='color: var(--tg-hint);'>Нет данных о ценах.</p>";
+      return;
+    }
+    
+    var table = document.createElement("table");
+    table.className = "prices-table";
+    
+    var thead = document.createElement("thead");
+    var headerRow = document.createElement("tr");
+    ["Опция", "Цена (₽)", "Количество отчётов"].forEach(function (h) {
+      var th = document.createElement("th");
+      th.textContent = h;
+      headerRow.appendChild(th);
+    });
+    thead.appendChild(headerRow);
+    table.appendChild(thead);
+    
+    var tbody = document.createElement("tbody");
+    prices.forEach(function (price) {
+      var tr = document.createElement("tr");
+      
+      var tdOption = document.createElement("td");
+      tdOption.textContent = price.option;
+      tr.appendChild(tdOption);
+      
+      var tdPrice = document.createElement("td");
+      var priceInput = document.createElement("input");
+      priceInput.type = "number";
+      priceInput.min = "0";
+      priceInput.step = "1";
+      priceInput.value = price.price;
+      priceInput.dataset.option = price.option;
+      priceInput.dataset.field = "price";
+      tdPrice.appendChild(priceInput);
+      tr.appendChild(tdPrice);
+      
+      var tdReports = document.createElement("td");
+      var reportsInput = document.createElement("input");
+      reportsInput.type = "number";
+      reportsInput.min = "1";
+      reportsInput.step = "1";
+      reportsInput.value = price.reports_amount;
+      reportsInput.dataset.option = price.option;
+      reportsInput.dataset.field = "reports_amount";
+      tdReports.appendChild(reportsInput);
+      tr.appendChild(tdReports);
+      
+      tbody.appendChild(tr);
+    });
+    table.appendChild(tbody);
+    container.appendChild(table);
+  }
+
+  // Prices: load data
+  function loadPrices() {
+    var btn = document.getElementById("prices-refresh");
+    btn.loading = true;
+    adminFetch("/api/admin/prices", "GET", null)
+      .then(function (data) {
+        pricesData = data.prices;
+        renderPrices(pricesData);
+      })
+      .catch(function () { /* error already shown */ })
+      .finally(function () { btn.loading = false; });
+  }
+
+  // Prices: refresh button
+  document.getElementById("prices-refresh").addEventListener("click", function () {
+    loadPrices();
+  });
+
+  // Prices: save button
+  document.getElementById("prices-save-btn").addEventListener("click", function () {
+    var inputs = document.querySelectorAll("#prices-content input[type='number']");
+    var updatedPrices = {};
+    
+    var hasError = false;
+    inputs.forEach(function (input) {
+      var option = input.dataset.option;
+      var field = input.dataset.field;
+      var value = parseInt(input.value, 10);
+      
+      if (isNaN(value)) {
+        showError("Все поля должны быть числами.");
+        hasError = true;
+        return;
+      }
+      
+      if (field === "price" && value < 0) {
+        showError("Цена не может быть отрицательной.");
+        hasError = true;
+        return;
+      }
+      
+      if (field === "reports_amount" && value < 1) {
+        showError("Количество отчётов должно быть больше 0.");
+        hasError = true;
+        return;
+      }
+      
+      if (!updatedPrices[option]) {
+        updatedPrices[option] = { option: option };
+      }
+      updatedPrices[option][field] = value;
+    });
+    
+    if (hasError) {
+      return;
+    }
+    
+    var pricesArray = Object.values(updatedPrices);
+    
+    var btn = document.getElementById("prices-save-btn");
+    var resultDiv = document.getElementById("prices-result");
+    btn.loading = true;
+    resultDiv.style.display = "none";
+    
+    adminFetch("/api/admin/prices", "POST", { prices: pricesArray })
+      .then(function (data) {
+        resultDiv.textContent = "Успешно обновлено: " + data.updated + " строк.";
+        resultDiv.style.display = "block";
+        resultDiv.style.background = "#d4edda";
+        resultDiv.style.color = "#155724";
+        pricesData = data.prices;
+        renderPrices(pricesData);
+      })
+      .catch(function (err) {
+        resultDiv.textContent = "Ошибка сохранения: " + (err.message || "неизвестная ошибка");
+        resultDiv.style.display = "block";
+        resultDiv.style.background = "#fdecea";
+        resultDiv.style.color = "#b71c1c";
+      })
       .finally(function () { btn.loading = false; });
   });
 

@@ -187,3 +187,65 @@ class ConversionsResponse(BaseModel):
     range_end: datetime
     groups: list[ConversionGroup]
     conversions: list[ConversionStep]
+
+
+# ---------------------------------------------------------------------------
+# POST /api/admin/broadcast
+# ---------------------------------------------------------------------------
+
+class BroadcastRequest(BaseModel):
+    """Request body for ``POST /api/admin/broadcast``."""
+
+    category: int
+    message: str = Field(min_length=1)
+
+
+class BroadcastResponse(BaseModel):
+    """Response body for ``POST /api/admin/broadcast``."""
+
+    sent: int
+    failed: int
+    total: int
+
+
+# ---------------------------------------------------------------------------
+# GET /api/admin/prices
+# ---------------------------------------------------------------------------
+
+class PriceRow(BaseModel):
+    """A single price configuration row."""
+
+    option: str
+    price: int
+    reports_amount: int
+
+
+class PricesListResponse(BaseModel):
+    """Response body for ``GET /api/admin/prices``."""
+
+    prices: list[PriceRow]
+
+
+# ---------------------------------------------------------------------------
+# POST /api/admin/prices
+# ---------------------------------------------------------------------------
+
+class PriceUpdateRow(BaseModel):
+    """A single price row for bulk update."""
+
+    option: str
+    price: int = Field(ge=0)
+    reports_amount: int = Field(gt=0)
+
+
+class PricesUpdateRequest(BaseModel):
+    """Request body for ``POST /api/admin/prices``."""
+
+    prices: list[PriceUpdateRow] = Field(min_length=1)
+
+
+class PricesUpdateResponse(BaseModel):
+    """Response body for ``POST /api/admin/prices``."""
+
+    updated: int
+    prices: list[PriceRow]

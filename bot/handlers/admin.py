@@ -15,35 +15,20 @@ from aiogram.types import (
     WebAppInfo,
 )
 
+from bot.broadcast_groups import GROUP_LABELS, GROUP_QUERY_MAP
 from bot.config import settings
 from bot.states import AdminStates
 from database.models import EventType, User
 from database.queries import (
-    get_users_no_reports_no_payments,
-    get_users_one_report_no_payments,
-    get_users_single_purchase,
     count_unique_users_by_events,
     get_unique_user_ids_by_events,
     get_usernames_by_ids,
+    get_users_one_report_no_payments,
 )
 
 logger = logging.getLogger(__name__)
 
 router = Router()
-
-# User segment labels for display
-GROUP_LABELS = {
-    "no_activity": "Нажали /start, но не сделали ни одного отчета",
-    "used_trial": "Использовали пробный отчет, но не покупали",
-    "bought_single": "Купили ровно один отчет",
-}
-
-# Mapping from group key to query function
-GROUP_QUERY_MAP = {
-    "no_activity": get_users_no_reports_no_payments,
-    "used_trial": get_users_one_report_no_payments,
-    "bought_single": get_users_single_purchase,
-}
 
 ConversionSource = list[EventType] | Callable[[], Awaitable[list[int]]]
 
@@ -67,6 +52,7 @@ CONVERSION_CATEGORIES: dict[int, tuple[str, ConversionSource]] = {
     ),
     10: ("Сделали покупку", [EventType.PAY_FOR_OPTION]),
     11: ('Нажали "Реферальная ссылка"', [EventType.CLICK_REFERRAL_LINK]),
+    13: ('Нажали "Пример отчета"', [EventType.CLICK_EXAMPLE_REPORT]),
     12: (
         "Использовали пробный отчет, но не покупали",
         get_users_one_report_no_payments,

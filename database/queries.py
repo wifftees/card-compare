@@ -299,6 +299,108 @@ async def get_price_by_option(option: ProductOption) -> Optional[Price]:
         return None
 
 
+async def get_all_prices() -> list[Price]:
+    """
+    Get all price configurations from the prices table.
+
+    Returns:
+        list[Price]: List of all price rows (option, price, reports_amount)
+    """
+    try:
+        logger.info("🔍 Fetching all prices from database...")
+        supabase = get_supabase()
+        response = supabase.table("prices").select("*").execute()
+
+        if response.data:
+            prices = [Price(**row) for row in response.data]
+            logger.info(f"💰 Fetched {len(prices)} price rows from database")
+            return prices
+
+        logger.info("💰 No prices found in database")
+        return []
+    except Exception as e:
+        logger.error(f"❌ Error fetching all prices from database: {e}", exc_info=True)
+        return []
+
+
+def _validate_price_row(price: Price) -> None:
+    """
+    Validate a price row before DB write.
+
+    Args:
+        price: Price object to validate
+
+    Raises:
+        ValueError: If validation fails
+    """
+    if price.price < 0:
+        raise ValueError(f"Price must be >= 0, got {price.price}")
+    if price.reports_amount <= 0:
+        raise ValueError(f"Reports amount must be > 0, got {price.reports_amount}")
+
+
+async def bulk_upsert_prices(prices: list[Price]) -> list[Price]:
+    """
+    Bulk update (or upsert) price rows keyed by option.
+
+    All rows are validated before any DB writes. If validation fails for any row,
+    no updates are performed.
+
+    Args:
+        prices: List of Price objects to upsert
+
+    Returns:
+        list[Price]: Updated price rows from database
+
+    Raises:
+        ValueError: If validation fails for any row
+    """
+    try:
+        # Validate all rows before any DB writes
+        for price in prices:
+            _validate_price_row(price)
+
+        logger.info(f"💾 Upserting {len(prices)} price rows...")
+        supabase = get_supabase()
+
+        # Fetch existing prices to determine which to update vs insert
+        existing_response = supabase.table("prices").select("*").execute()
+        existing_options = {row["option"] for row in existing_response.data}
+
+        updated_prices = []
+
+        for price in prices:
+            price_data = {
+                "option": price.option.value,
+                "price": price.price,
+                "reports_amount": price.reports_amount,
+            }
+
+            if price.option.value in existing_options:
+                # Update existing price
+                response = (
+                    supabase.table("prices")
+                    .update(price_data)
+                    .eq("option", price.option.value)
+                    .execute()
+                )
+            else:
+                # Insert new price
+                response = supabase.table("prices").insert(price_data).execute()
+
+            if response.data:
+                updated_prices.extend([Price(**row) for row in response.data])
+
+        logger.info(f"✅ Successfully upserted {len(updated_prices)} price rows")
+        return updated_prices
+    except ValueError:
+        # Re-raise validation errors as-is
+        raise
+    except Exception as e:
+        logger.error(f"❌ Error upserting prices: {e}", exc_info=True)
+        raise
+
+
 # Payment functions
 
 

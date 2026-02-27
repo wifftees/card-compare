@@ -20,8 +20,14 @@ import pytest
 from aiohttp import web
 from aiohttp.test_utils import TestClient
 
-from api.admin_handlers import conversions_handler, overview_handler
-from database.models import EventType
+from api.admin_handlers import (
+    broadcast_handler,
+    conversions_handler,
+    overview_handler,
+    prices_list_handler,
+    prices_update_handler,
+)
+from database.models import EventType, Price, ProductOption
 from api.admin_models import (
     CoreKPIs,
     PayerSegmentation,
@@ -77,13 +83,21 @@ def non_admin_init_data() -> str:
     return _build_init_data(params)
 
 
-def _make_admin_app() -> web.Application:
+def _make_admin_app(
+    include_broadcast: bool = False, include_prices: bool = False
+) -> web.Application:
     """Create test app with admin auth middleware."""
     from api.admin_auth import admin_auth_middleware
 
     app = web.Application(middlewares=[admin_auth_middleware])
     app.router.add_post("/api/admin/overview", overview_handler)
     app.router.add_post("/api/admin/conversions", conversions_handler)
+    if include_broadcast:
+        app["bot"] = AsyncMock()
+        app.router.add_post("/api/admin/broadcast", broadcast_handler)
+    if include_prices:
+        app.router.add_get("/api/admin/prices", prices_list_handler)
+        app.router.add_post("/api/admin/prices", prices_update_handler)
     return app
 
 
@@ -598,3 +612,585 @@ class TestConversionsHandler:
         conv = body["conversions"][0]
         # 2/7 * 100 = 28.571... → should round to 28.6
         assert conv["percent"] == 28.6
+
+
+# ---------------------------------------------------------------------------
+# Broadcast handler: auth, validation, response
+# ---------------------------------------------------------------------------
+
+
+class TestBroadcastHandler:
+    """Test POST /api/admin/broadcast: auth, validation, and response shape."""
+
+    @pytest.mark.asyncio
+    async def test_broadcast_missing_init_data_returns_401(
+        self, aiohttp_client: Any
+    ) -> None:
+        """Missing X-Telegram-Init-Data header should return 401."""
+        with patch("api.admin_auth.settings", _MOCK_SETTINGS):
+            app = _make_admin_app(include_broadcast=True)
+            client: TestClient = await aiohttp_client(app)
+
+            resp = await client.post(
+                "/api/admin/broadcast",
+                json={"category": 1, "message": "Hello"},
+            )
+
+        assert resp.status == 401
+        body = await resp.json()
+        assert "error" in body
+
+    @pytest.mark.asyncio
+    async def test_broadcast_non_admin_returns_403(
+        self, aiohttp_client: Any, non_admin_init_data: str
+    ) -> None:
+        """Valid initData for non-admin user should return 403."""
+        with patch("api.admin_auth.settings", _MOCK_SETTINGS):
+            app = _make_admin_app(include_broadcast=True)
+            client: TestClient = await aiohttp_client(app)
+
+            resp = await client.post(
+                "/api/admin/broadcast",
+                json={"category": 1, "message": "Hello"},
+                headers={"X-Telegram-Init-Data": non_admin_init_data},
+            )
+
+        assert resp.status == 403
+        body = await resp.json()
+        assert "error" in body
+        assert "forbidden" in body["error"].lower()
+
+    @pytest.mark.asyncio
+    async def test_broadcast_invalid_category_returns_400(
+        self, aiohttp_client: Any, admin_init_data: str
+    ) -> None:
+        """Invalid category number should return 400."""
+        with patch("api.admin_auth.settings", _MOCK_SETTINGS):
+            app = _make_admin_app(include_broadcast=True)
+            client: TestClient = await aiohttp_client(app)
+
+            resp = await client.post(
+                "/api/admin/broadcast",
+                json={"category": 999, "message": "Hello"},
+                headers={"X-Telegram-Init-Data": admin_init_data},
+            )
+
+        assert resp.status == 400
+        body = await resp.json()
+        assert "error" in body
+        assert "999" in body["error"]
+
+    @pytest.mark.asyncio
+    async def test_broadcast_empty_message_returns_400(
+        self, aiohttp_client: Any, admin_init_data: str
+    ) -> None:
+        """Empty message should return 400."""
+        with patch("api.admin_auth.settings", _MOCK_SETTINGS):
+            app = _make_admin_app(include_broadcast=True)
+            client: TestClient = await aiohttp_client(app)
+
+            resp = await client.post(
+                "/api/admin/broadcast",
+                json={"category": 1, "message": ""},
+                headers={"X-Telegram-Init-Data": admin_init_data},
+            )
+
+        assert resp.status == 400
+        body = await resp.json()
+        assert "error" in body
+
+    @pytest.mark.asyncio
+    async def test_broadcast_success_returns_sent_failed_total(
+        self, aiohttp_client: Any, admin_init_data: str
+    ) -> None:
+        """Successful broadcast should return sent, failed, total."""
+        async def mock_resolve(_source: Any) -> list[int]:
+            return [100, 200, 300]
+
+        mock_bot = AsyncMock()
+        mock_bot.send_message = AsyncMock(return_value=None)
+
+        with patch("api.admin_auth.settings", _MOCK_SETTINGS):
+            with patch("api.admin_handlers._resolve_user_ids", side_effect=mock_resolve):
+                app = _make_admin_app(include_broadcast=True)
+                app["bot"] = mock_bot
+                client: TestClient = await aiohttp_client(app)
+
+                resp = await client.post(
+                    "/api/admin/broadcast",
+                    json={"category": 1, "message": "Test message"},
+                    headers={"X-Telegram-Init-Data": admin_init_data},
+                )
+
+        assert resp.status == 200
+        body = await resp.json()
+        assert body["sent"] == 3
+        assert body["failed"] == 0
+        assert body["total"] == 3
+
+
+# ---------------------------------------------------------------------------
+# Task 5.1: GET /api/admin/prices auth and response tests
+# ---------------------------------------------------------------------------
+
+
+class TestPricesListHandler:
+    """Test GET /api/admin/prices: auth required, returns rows."""
+
+    @pytest.mark.asyncio
+    async def test_prices_list_missing_init_data_returns_401(
+        self, aiohttp_client: Any
+    ) -> None:
+        """Missing X-Telegram-Init-Data header should return 401."""
+        with patch("api.admin_auth.settings", _MOCK_SETTINGS):
+            app = _make_admin_app(include_prices=True)
+            client: TestClient = await aiohttp_client(app)
+
+            resp = await client.get("/api/admin/prices")
+
+        assert resp.status == 401
+        body = await resp.json()
+        assert "error" in body
+        assert "initdata" in body["error"].lower()
+
+    @pytest.mark.asyncio
+    async def test_prices_list_non_admin_returns_403(
+        self, aiohttp_client: Any, non_admin_init_data: str
+    ) -> None:
+        """Valid initData for non-admin user should return 403."""
+        with patch("api.admin_auth.settings", _MOCK_SETTINGS):
+            app = _make_admin_app(include_prices=True)
+            client: TestClient = await aiohttp_client(app)
+
+            resp = await client.get(
+                "/api/admin/prices",
+                headers={"X-Telegram-Init-Data": non_admin_init_data},
+            )
+
+        assert resp.status == 403
+        body = await resp.json()
+        assert "error" in body
+        assert "forbidden" in body["error"].lower()
+
+    @pytest.mark.asyncio
+    async def test_prices_list_returns_all_prices(
+        self, aiohttp_client: Any, admin_init_data: str
+    ) -> None:
+        """GET /api/admin/prices should return all price rows."""
+        mock_prices = [
+            Price(
+                option=ProductOption.SINGLE,
+                price=100,
+                reports_amount=1,
+            ),
+            Price(
+                option=ProductOption.PACKET,
+                price=500,
+                reports_amount=10,
+            ),
+            Price(
+                option=ProductOption.PACKET_FIRST,
+                price=1000,
+                reports_amount=5,
+            ),
+        ]
+
+        with patch("api.admin_auth.settings", _MOCK_SETTINGS):
+            with patch(
+                "api.admin_handlers.get_all_prices", return_value=mock_prices
+            ):
+                app = _make_admin_app(include_prices=True)
+                client: TestClient = await aiohttp_client(app)
+
+                resp = await client.get(
+                    "/api/admin/prices",
+                    headers={"X-Telegram-Init-Data": admin_init_data},
+                )
+
+        assert resp.status == 200
+        body = await resp.json()
+        assert "prices" in body
+        assert len(body["prices"]) == 3
+
+        # Verify structure of returned rows
+        assert body["prices"][0]["option"] == "SINGLE"
+        assert body["prices"][0]["price"] == 100
+        assert body["prices"][0]["reports_amount"] == 1
+
+        assert body["prices"][1]["option"] == "PACKET"
+        assert body["prices"][1]["price"] == 500
+        assert body["prices"][1]["reports_amount"] == 10
+
+        assert body["prices"][2]["option"] == "PACKET_FIRST"
+        assert body["prices"][2]["price"] == 1000
+        assert body["prices"][2]["reports_amount"] == 5
+
+    @pytest.mark.asyncio
+    async def test_prices_list_returns_empty_list_when_no_prices(
+        self, aiohttp_client: Any, admin_init_data: str
+    ) -> None:
+        """GET /api/admin/prices should return empty list when no prices exist."""
+        with patch("api.admin_auth.settings", _MOCK_SETTINGS):
+            with patch("api.admin_handlers.get_all_prices", return_value=[]):
+                app = _make_admin_app(include_prices=True)
+                client: TestClient = await aiohttp_client(app)
+
+                resp = await client.get(
+                    "/api/admin/prices",
+                    headers={"X-Telegram-Init-Data": admin_init_data},
+                )
+
+        assert resp.status == 200
+        body = await resp.json()
+        assert "prices" in body
+        assert body["prices"] == []
+
+
+# ---------------------------------------------------------------------------
+# Task 5.2: POST /api/admin/prices bulk update happy path
+# ---------------------------------------------------------------------------
+
+
+class TestPricesUpdateHandler:
+    """Test POST /api/admin/prices: bulk update happy path."""
+
+    @pytest.mark.asyncio
+    async def test_prices_update_success(
+        self, aiohttp_client: Any, admin_init_data: str
+    ) -> None:
+        """POST /api/admin/prices should successfully update prices."""
+        request_data = {
+            "prices": [
+                {"option": "SINGLE", "price": 150, "reports_amount": 1},
+                {"option": "PACKET", "price": 600, "reports_amount": 10},
+            ]
+        }
+
+        mock_updated_prices = [
+            Price(option=ProductOption.SINGLE, price=150, reports_amount=1),
+            Price(option=ProductOption.PACKET, price=600, reports_amount=10),
+        ]
+
+        mock_bulk_upsert = AsyncMock(return_value=mock_updated_prices)
+
+        with patch("api.admin_auth.settings", _MOCK_SETTINGS):
+            with patch(
+                "api.admin_handlers.bulk_upsert_prices", mock_bulk_upsert
+            ):
+                app = _make_admin_app(include_prices=True)
+                client: TestClient = await aiohttp_client(app)
+
+                resp = await client.post(
+                    "/api/admin/prices",
+                    json=request_data,
+                    headers={"X-Telegram-Init-Data": admin_init_data},
+                )
+
+        assert resp.status == 200
+        body = await resp.json()
+
+        # Verify response structure
+        assert "updated" in body
+        assert "prices" in body
+        assert body["updated"] == 2
+        assert len(body["prices"]) == 2
+
+        # Verify returned prices
+        assert body["prices"][0]["option"] == "SINGLE"
+        assert body["prices"][0]["price"] == 150
+        assert body["prices"][0]["reports_amount"] == 1
+
+        assert body["prices"][1]["option"] == "PACKET"
+        assert body["prices"][1]["price"] == 600
+        assert body["prices"][1]["reports_amount"] == 10
+
+        # Verify bulk_upsert_prices was called with correct data
+        assert mock_bulk_upsert.called
+        call_args = mock_bulk_upsert.call_args[0][0]
+        assert len(call_args) == 2
+        assert call_args[0].option == ProductOption.SINGLE
+        assert call_args[0].price == 150
+        assert call_args[1].option == ProductOption.PACKET
+        assert call_args[1].price == 600
+
+    @pytest.mark.asyncio
+    async def test_prices_update_single_price(
+        self, aiohttp_client: Any, admin_init_data: str
+    ) -> None:
+        """POST /api/admin/prices should work with a single price."""
+        request_data = {
+            "prices": [{"option": "PACKET_SECOND", "price": 1200, "reports_amount": 15}]
+        }
+
+        mock_updated_prices = [
+            Price(option=ProductOption.PACKET_SECOND, price=1200, reports_amount=15)
+        ]
+
+        with patch("api.admin_auth.settings", _MOCK_SETTINGS):
+            with patch(
+                "api.admin_handlers.bulk_upsert_prices",
+                return_value=mock_updated_prices,
+            ):
+                app = _make_admin_app(include_prices=True)
+                client: TestClient = await aiohttp_client(app)
+
+                resp = await client.post(
+                    "/api/admin/prices",
+                    json=request_data,
+                    headers={"X-Telegram-Init-Data": admin_init_data},
+                )
+
+        assert resp.status == 200
+        body = await resp.json()
+        assert body["updated"] == 1
+        assert len(body["prices"]) == 1
+        assert body["prices"][0]["option"] == "PACKET_SECOND"
+
+
+# ---------------------------------------------------------------------------
+# Task 5.3: POST /api/admin/prices validation failures
+# ---------------------------------------------------------------------------
+
+
+class TestPricesUpdateValidation:
+    """Test POST /api/admin/prices: validation failures and no partial updates."""
+
+    @pytest.mark.asyncio
+    async def test_prices_update_missing_init_data_returns_401(
+        self, aiohttp_client: Any
+    ) -> None:
+        """Missing X-Telegram-Init-Data header should return 401."""
+        with patch("api.admin_auth.settings", _MOCK_SETTINGS):
+            app = _make_admin_app(include_prices=True)
+            client: TestClient = await aiohttp_client(app)
+
+            resp = await client.post(
+                "/api/admin/prices",
+                json={"prices": [{"option": "SINGLE", "price": 100, "reports_amount": 1}]},
+            )
+
+        assert resp.status == 401
+        body = await resp.json()
+        assert "error" in body
+
+    @pytest.mark.asyncio
+    async def test_prices_update_non_admin_returns_403(
+        self, aiohttp_client: Any, non_admin_init_data: str
+    ) -> None:
+        """Valid initData for non-admin user should return 403."""
+        with patch("api.admin_auth.settings", _MOCK_SETTINGS):
+            app = _make_admin_app(include_prices=True)
+            client: TestClient = await aiohttp_client(app)
+
+            resp = await client.post(
+                "/api/admin/prices",
+                json={"prices": [{"option": "SINGLE", "price": 100, "reports_amount": 1}]},
+                headers={"X-Telegram-Init-Data": non_admin_init_data},
+            )
+
+        assert resp.status == 403
+        body = await resp.json()
+        assert "error" in body
+        assert "forbidden" in body["error"].lower()
+
+    @pytest.mark.asyncio
+    async def test_prices_update_invalid_json_returns_400(
+        self, aiohttp_client: Any, admin_init_data: str
+    ) -> None:
+        """Malformed JSON should return 400."""
+        with patch("api.admin_auth.settings", _MOCK_SETTINGS):
+            app = _make_admin_app(include_prices=True)
+            client: TestClient = await aiohttp_client(app)
+
+            resp = await client.post(
+                "/api/admin/prices",
+                data="not-json",
+                headers={
+                    "X-Telegram-Init-Data": admin_init_data,
+                    "Content-Type": "application/json",
+                },
+            )
+
+        assert resp.status == 400
+        body = await resp.json()
+        assert "error" in body
+        assert "json" in body["error"].lower()
+
+    @pytest.mark.asyncio
+    async def test_prices_update_empty_prices_list_returns_400(
+        self, aiohttp_client: Any, admin_init_data: str
+    ) -> None:
+        """Empty prices list should return 400."""
+        with patch("api.admin_auth.settings", _MOCK_SETTINGS):
+            app = _make_admin_app(include_prices=True)
+            client: TestClient = await aiohttp_client(app)
+
+            resp = await client.post(
+                "/api/admin/prices",
+                json={"prices": []},
+                headers={"X-Telegram-Init-Data": admin_init_data},
+            )
+
+        assert resp.status == 400
+        body = await resp.json()
+        assert "error" in body
+
+    @pytest.mark.asyncio
+    async def test_prices_update_invalid_option_returns_400(
+        self, aiohttp_client: Any, admin_init_data: str
+    ) -> None:
+        """Invalid product option should return 400."""
+        mock_bulk_upsert = AsyncMock()
+
+        with patch("api.admin_auth.settings", _MOCK_SETTINGS):
+            with patch(
+                "api.admin_handlers.bulk_upsert_prices", mock_bulk_upsert
+            ):
+                app = _make_admin_app(include_prices=True)
+                client: TestClient = await aiohttp_client(app)
+
+                resp = await client.post(
+                    "/api/admin/prices",
+                    json={
+                        "prices": [
+                            {"option": "INVALID_OPTION", "price": 100, "reports_amount": 1}
+                        ]
+                    },
+                    headers={"X-Telegram-Init-Data": admin_init_data},
+                )
+
+        assert resp.status == 400
+        body = await resp.json()
+        assert "error" in body
+        assert "invalid product option" in body["error"].lower()
+
+        # Verify bulk_upsert_prices was NOT called
+        assert not mock_bulk_upsert.called
+
+    @pytest.mark.asyncio
+    async def test_prices_update_negative_price_returns_400(
+        self, aiohttp_client: Any, admin_init_data: str
+    ) -> None:
+        """Negative price should return 400 and not call bulk_upsert_prices."""
+        mock_bulk_upsert = AsyncMock()
+
+        with patch("api.admin_auth.settings", _MOCK_SETTINGS):
+            with patch(
+                "api.admin_handlers.bulk_upsert_prices", mock_bulk_upsert
+            ):
+                app = _make_admin_app(include_prices=True)
+                client: TestClient = await aiohttp_client(app)
+
+                resp = await client.post(
+                    "/api/admin/prices",
+                    json={
+                        "prices": [
+                            {"option": "SINGLE", "price": -100, "reports_amount": 1}
+                        ]
+                    },
+                    headers={"X-Telegram-Init-Data": admin_init_data},
+                )
+
+        assert resp.status == 400
+        body = await resp.json()
+        assert "error" in body
+        assert "invalid request" in body["error"].lower()
+        assert "greater than or equal to 0" in body["error"].lower()
+
+        # Verify bulk_upsert_prices was NOT called (Pydantic validation fails first)
+        assert not mock_bulk_upsert.called
+
+    @pytest.mark.asyncio
+    async def test_prices_update_zero_reports_amount_returns_400(
+        self, aiohttp_client: Any, admin_init_data: str
+    ) -> None:
+        """Zero reports_amount should return 400 and not perform partial update."""
+        mock_bulk_upsert = AsyncMock()
+
+        with patch("api.admin_auth.settings", _MOCK_SETTINGS):
+            with patch(
+                "api.admin_handlers.bulk_upsert_prices", mock_bulk_upsert
+            ):
+                app = _make_admin_app(include_prices=True)
+                client: TestClient = await aiohttp_client(app)
+
+                resp = await client.post(
+                    "/api/admin/prices",
+                    json={
+                        "prices": [
+                            {"option": "SINGLE", "price": 100, "reports_amount": 0},
+                            {"option": "PACKET", "price": 500, "reports_amount": 10},
+                        ]
+                    },
+                    headers={"X-Telegram-Init-Data": admin_init_data},
+                )
+
+        assert resp.status == 400
+        body = await resp.json()
+        assert "error" in body
+        assert "invalid request" in body["error"].lower()
+        assert "greater than 0" in body["error"].lower()
+
+        # Verify bulk_upsert_prices was NOT called (Pydantic validation fails first)
+        assert not mock_bulk_upsert.called
+
+    @pytest.mark.asyncio
+    async def test_prices_update_mixed_valid_invalid_returns_400_no_partial_update(
+        self, aiohttp_client: Any, admin_init_data: str
+    ) -> None:
+        """Mixed valid/invalid prices should return 400 with no partial update."""
+        mock_bulk_upsert = AsyncMock()
+
+        with patch("api.admin_auth.settings", _MOCK_SETTINGS):
+            with patch(
+                "api.admin_handlers.bulk_upsert_prices", mock_bulk_upsert
+            ):
+                app = _make_admin_app(include_prices=True)
+                client: TestClient = await aiohttp_client(app)
+
+                resp = await client.post(
+                    "/api/admin/prices",
+                    json={
+                        "prices": [
+                            {"option": "SINGLE", "price": 100, "reports_amount": 1},
+                            {"option": "PACKET", "price": 500, "reports_amount": -5},
+                        ]
+                    },
+                    headers={"X-Telegram-Init-Data": admin_init_data},
+                )
+
+        assert resp.status == 400
+        body = await resp.json()
+        assert "error" in body
+        assert "invalid request" in body["error"].lower()
+
+        # Verify bulk_upsert_prices was NOT called
+        # Pydantic validates ALL rows before any DB operations
+        assert not mock_bulk_upsert.called
+
+    @pytest.mark.asyncio
+    async def test_prices_update_missing_required_fields_returns_400(
+        self, aiohttp_client: Any, admin_init_data: str
+    ) -> None:
+        """Missing required fields should return 400."""
+        mock_bulk_upsert = AsyncMock()
+
+        with patch("api.admin_auth.settings", _MOCK_SETTINGS):
+            with patch(
+                "api.admin_handlers.bulk_upsert_prices", mock_bulk_upsert
+            ):
+                app = _make_admin_app(include_prices=True)
+                client: TestClient = await aiohttp_client(app)
+
+                resp = await client.post(
+                    "/api/admin/prices",
+                    json={"prices": [{"option": "SINGLE", "price": 100}]},
+                    headers={"X-Telegram-Init-Data": admin_init_data},
+                )
+
+        assert resp.status == 400
+        body = await resp.json()
+        assert "error" in body
+
+        # Verify bulk_upsert_prices was NOT called (Pydantic validation fails first)
+        assert not mock_bulk_upsert.called

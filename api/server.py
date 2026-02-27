@@ -6,9 +6,12 @@ from aiogram import Bot
 
 from api.admin_auth import admin_auth_middleware
 from api.admin_handlers import (
+    broadcast_handler,
     categories_handler,
     conversions_handler,
     overview_handler,
+    prices_list_handler,
+    prices_update_handler,
     usernames_handler,
 )
 from api.miniapp import miniapp_admin_handler
@@ -69,6 +72,8 @@ def create_app(bot: Bot) -> web.Application:
     """
     app = web.Application(middlewares=[admin_auth_middleware])
 
+    app["bot"] = bot
+
     # Initialize payment service with bot
     payment_service = PaymentService(bot=bot)
     app["payment_service"] = payment_service
@@ -79,6 +84,9 @@ def create_app(bot: Bot) -> web.Application:
     app.router.add_post("/api/admin/overview", overview_handler)
     app.router.add_post("/api/admin/conversions", conversions_handler)
     app.router.add_post("/api/admin/usernames", usernames_handler)
+    app.router.add_post("/api/admin/broadcast", broadcast_handler)
+    app.router.add_get("/api/admin/prices", prices_list_handler)
+    app.router.add_post("/api/admin/prices", prices_update_handler)
     app.router.add_post("/api/payment/yookassa", yookassa_webhook_handler)
     app.router.add_get("/health", health_check_handler)
 
@@ -88,6 +96,9 @@ def create_app(bot: Bot) -> web.Application:
     logger.info("  - POST /api/admin/overview")
     logger.info("  - POST /api/admin/conversions")
     logger.info("  - POST /api/admin/usernames")
+    logger.info("  - POST /api/admin/broadcast")
+    logger.info("  - GET  /api/admin/prices")
+    logger.info("  - POST /api/admin/prices")
     logger.info("  - POST /api/payment/yookassa (YooKassa webhook)")
     logger.info("  - GET  /health (health check)")
 
