@@ -110,6 +110,12 @@ context: |
   - `POST /api/payment/yookassa`
     - `api.server.yookassa_webhook_handler` → `payment.webhook.handle_yookassa_webhook`
     - Always returns HTTP 200 to prevent YooKassa retries.
+  - `POST /api/admin/conversions`
+    - Admin-only (Telegram WebApp initData via `X-Telegram-Init-Data`)
+  - `POST /api/admin/usernames`
+    - Admin-only (Telegram WebApp initData via `X-Telegram-Init-Data`)
+  - `GET /miniapp/admin`
+    - Admin Mini App HTML entrypoint (served by embedded aiohttp app)
   - `GET /health`
     - `api.server.health_check_handler`
 
@@ -128,7 +134,7 @@ context: |
   - Report flow input:
     - `CompareCardsStates.waiting_for_articles` message handler parses comma-separated integers
   - Admin:
-    - `/admin` command + multiple callbacks under `AdminStates.*` for broadcasts and conversion analytics
+    - `/admin` command replies with a Web App button that opens the Admin Mini App (`/miniapp/admin`)
   - Auth code:
     - regex `^\d{4,6}$` message handler for admin-only WB SMS codes (`bot/handlers/auth_code.py`)
 

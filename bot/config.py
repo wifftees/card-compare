@@ -1,5 +1,6 @@
 """Bot configuration using Pydantic Settings"""
 
+from pydantic import model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -12,7 +13,10 @@ class BotSettings(BaseSettings):
 
     # Telegram Bot
     bot_token: str = ""
-    admin_ids: str = ""  # Comma-separated list of admin IDs
+    admin_ids: str = ""  # Comma-separated admin Telegram IDs for panel & API access
+
+    # Public URL (HTTPS) used to build Telegram WebApp links
+    public_base_url: str = ""
 
     # Supabase
     supabase_url: str = ""
@@ -30,7 +34,7 @@ class BotSettings(BaseSettings):
         86400  # Restart browser every N seconds (default: 24 hours)
     )
 
-    # Admin for auth codes
+    # Single admin who receives WB browser auth codes (not used for panel ACL)
     admin_telegram_id: int = 0
 
     # Payment (legacy Telegram Payments - deprecated)
@@ -64,12 +68,27 @@ class BotSettings(BaseSettings):
     log_file_backup_count: int = 5  # Keep 5 backup files
     log_rotation_type: str = "size"  # "size" or "time" (daily)
 
+    @model_validator(mode="after")
+    def _normalize_urls(self) -> "BotSettings":
+        if self.public_base_url:
+            self.public_base_url = self.public_base_url.rstrip("/")
+        return self
+
     @property
     def admin_id_list(self) -> list[int]:
-        """Parse admin IDs from comma-separated string"""
+        """Parse admin IDs from comma-separated string."""
         if not self.admin_ids:
             return []
         return [int(id_.strip()) for id_ in self.admin_ids.split(",") if id_.strip()]
+
+    @property
+    def admin_miniapp_url(self) -> str:
+        """Full URL for the admin Mini App, derived from ``public_base_url``."""
+        if not self.public_base_url:
+            raise ValueError(
+                "PUBLIC_BASE_URL must be set to use the admin Mini App"
+            )
+        return f"{self.public_base_url}/miniapp/admin"
 
 
 # Global settings instance

@@ -12,6 +12,7 @@ from aiogram.types import (
     CallbackQuery,
     InlineKeyboardMarkup,
     InlineKeyboardButton,
+    WebAppInfo,
 )
 
 from bot.config import settings
@@ -142,7 +143,7 @@ def _build_group_selection_keyboard() -> InlineKeyboardMarkup:
 
 @router.message(Command("admin"))
 async def admin_command(message: Message, state: FSMContext):
-    """Handle /admin – check access and show main menu."""
+    """Handle /admin – check access and open Admin Mini App via WebApp button."""
     user_id = message.from_user.id
     logger.info(f"[ADMIN] User {user_id} invoked /admin")
 
@@ -151,11 +152,21 @@ async def admin_command(message: Message, state: FSMContext):
         await message.answer("🚫 Админ-панель недоступна.")
         return
 
-    await state.set_state(AdminStates.main_menu)
+    await state.clear()
 
+    keyboard = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text="🔧 Открыть админ-панель",
+                    web_app=WebAppInfo(url=settings.admin_miniapp_url),
+                )
+            ],
+        ]
+    )
     await message.answer(
-        "🔧 <b>Админ-панель</b>\n\nВыберите действие:",
-        reply_markup=_build_main_menu_keyboard(),
+        "🔧 <b>Админ-панель</b>",
+        reply_markup=keyboard,
     )
 
 
