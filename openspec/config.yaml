@@ -110,7 +110,11 @@ context: |
   - `POST /api/payment/yookassa`
     - `api.server.yookassa_webhook_handler` → `payment.webhook.handle_yookassa_webhook`
     - Always returns HTTP 200 to prevent YooKassa retries.
+  - `GET /api/admin/categories`
+    - Admin-only (Telegram WebApp initData via `X-Telegram-Init-Data`)
   - `POST /api/admin/conversions`
+    - Admin-only (Telegram WebApp initData via `X-Telegram-Init-Data`)
+  - `POST /api/admin/overview`
     - Admin-only (Telegram WebApp initData via `X-Telegram-Init-Data`)
   - `POST /api/admin/usernames`
     - Admin-only (Telegram WebApp initData via `X-Telegram-Init-Data`)

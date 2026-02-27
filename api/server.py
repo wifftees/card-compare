@@ -5,7 +5,12 @@ from aiohttp import web
 from aiogram import Bot
 
 from api.admin_auth import admin_auth_middleware
-from api.admin_handlers import conversions_handler, usernames_handler
+from api.admin_handlers import (
+    categories_handler,
+    conversions_handler,
+    overview_handler,
+    usernames_handler,
+)
 from api.miniapp import miniapp_admin_handler
 from payment.webhook import handle_yookassa_webhook
 from payment.payment_service import PaymentService
@@ -70,6 +75,8 @@ def create_app(bot: Bot) -> web.Application:
 
     # Register routes
     app.router.add_get("/miniapp/admin", miniapp_admin_handler)
+    app.router.add_get("/api/admin/categories", categories_handler)
+    app.router.add_post("/api/admin/overview", overview_handler)
     app.router.add_post("/api/admin/conversions", conversions_handler)
     app.router.add_post("/api/admin/usernames", usernames_handler)
     app.router.add_post("/api/payment/yookassa", yookassa_webhook_handler)
@@ -77,6 +84,8 @@ def create_app(bot: Bot) -> web.Application:
 
     logger.info("✅ Web application created with routes:")
     logger.info("  - GET  /miniapp/admin (Admin Mini App)")
+    logger.info("  - GET  /api/admin/categories")
+    logger.info("  - POST /api/admin/overview")
     logger.info("  - POST /api/admin/conversions")
     logger.info("  - POST /api/admin/usernames")
     logger.info("  - POST /api/payment/yookassa (YooKassa webhook)")

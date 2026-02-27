@@ -15,8 +15,10 @@ _ADMIN_HTML = """\
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>Admin</title>
+<title>Admin Dashboard</title>
 <script src="https://telegram.org/js/telegram-web-app.js"></script>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@shoelace-style/shoelace@2.15.0/cdn/themes/light.css" />
+<script type="module" src="https://cdn.jsdelivr.net/npm/@shoelace-style/shoelace@2.15.0/cdn/shoelace-autoloader.js"></script>
 <style>
 :root {
   --tg-bg: var(--tg-theme-bg-color, #ffffff);
@@ -32,79 +34,235 @@ body {
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
   background: var(--tg-bg);
   color: var(--tg-text);
-  padding: 16px;
+  padding: 0;
   line-height: 1.5;
 }
-h1 { font-size: 1.25rem; margin-bottom: 16px; }
-section { margin-bottom: 24px; }
-section h2 {
-  font-size: 1rem;
-  margin-bottom: 8px;
-  color: var(--tg-link);
-}
-label { display: block; font-size: 0.85rem; color: var(--tg-hint); margin-bottom: 4px; }
-input[type="text"] {
-  width: 100%;
-  padding: 10px 12px;
-  border: 1px solid var(--tg-hint);
-  border-radius: 8px;
-  background: var(--tg-secondary-bg);
-  color: var(--tg-text);
-  font-size: 0.95rem;
-  margin-bottom: 8px;
-}
-button {
-  display: inline-block;
-  padding: 10px 20px;
-  border: none;
-  border-radius: 8px;
-  background: var(--tg-btn);
-  color: var(--tg-btn-text);
-  font-size: 0.95rem;
-  cursor: pointer;
-}
-button:disabled { opacity: 0.5; cursor: default; }
-.result {
-  margin-top: 12px;
-  padding: 12px;
-  border-radius: 8px;
-  background: var(--tg-secondary-bg);
-  white-space: pre-wrap;
-  font-size: 0.85rem;
-  display: none;
-}
-.result.visible { display: block; }
 .error-banner {
-  padding: 12px;
-  border-radius: 8px;
+  padding: 12px 16px;
   background: #fdecea;
   color: #b71c1c;
-  margin-bottom: 16px;
+  margin: 0;
   display: none;
   font-size: 0.9rem;
+  border-bottom: 1px solid #f5c6cb;
 }
 .error-banner.visible { display: block; }
+.top-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  background: var(--tg-secondary-bg);
+  border-bottom: 1px solid var(--tg-hint);
+}
+.top-bar h1 {
+  font-size: 1.25rem;
+  margin: 0;
+}
+.range-selector {
+  display: flex;
+  gap: 4px;
+}
+.range-selector sl-button::part(base) {
+  font-size: 0.85rem;
+  padding: 6px 12px;
+}
+.tab-content {
+  padding: 16px;
+  display: none;
+}
+.tab-content.active {
+  display: block;
+}
+.refresh-bar {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 16px;
+}
+.section {
+  margin-bottom: 24px;
+}
+.section-title {
+  font-size: 1rem;
+  font-weight: 600;
+  margin-bottom: 12px;
+  color: var(--tg-link);
+}
+.metric-card {
+  background: var(--tg-secondary-bg);
+  border-radius: 8px;
+  padding: 12px;
+  margin-bottom: 12px;
+}
+.metric-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 6px 0;
+}
+.metric-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.9rem;
+  color: var(--tg-text);
+}
+.metric-value {
+  font-weight: 600;
+  font-size: 1rem;
+}
+.info-icon {
+  cursor: help;
+  color: var(--tg-hint);
+}
+.all-time-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: #fff3cd;
+  color: #856404;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  margin-left: 8px;
+}
+.conversion-controls {
+  margin-bottom: 16px;
+}
+.group-sizes-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-bottom: 16px;
+  background: var(--tg-secondary-bg);
+  border-radius: 8px;
+  overflow: hidden;
+}
+.group-sizes-table th,
+.group-sizes-table td {
+  padding: 10px;
+  text-align: left;
+  border-bottom: 1px solid var(--tg-hint);
+}
+.group-sizes-table th {
+  background: var(--tg-link);
+  color: white;
+  font-weight: 600;
+  font-size: 0.85rem;
+}
+.group-sizes-table td {
+  font-size: 0.9rem;
+}
+.group-sizes-table tr:last-child td {
+  border-bottom: none;
+}
+.conversions-table {
+  width: 100%;
+  border-collapse: collapse;
+  background: var(--tg-secondary-bg);
+  border-radius: 8px;
+  overflow: hidden;
+}
+.conversions-table th,
+.conversions-table td {
+  padding: 10px;
+  text-align: left;
+  border-bottom: 1px solid var(--tg-hint);
+}
+.conversions-table th {
+  background: var(--tg-link);
+  color: white;
+  font-weight: 600;
+  font-size: 0.85rem;
+}
+.conversions-table td {
+  font-size: 0.9rem;
+}
+.conversions-table tr:last-child td {
+  border-bottom: none;
+}
+.conversion-percent {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.usernames-section {
+  margin-top: 32px;
+  padding-top: 24px;
+  border-top: 2px solid var(--tg-hint);
+}
+.usernames-input {
+  margin-bottom: 12px;
+}
+.usernames-list {
+  background: var(--tg-secondary-bg);
+  border-radius: 8px;
+  padding: 12px;
+  max-height: 300px;
+  overflow-y: auto;
+  font-size: 0.85rem;
+  white-space: pre-wrap;
+  font-family: monospace;
+}
 </style>
 </head>
 <body>
 <div id="error-banner" class="error-banner"></div>
-<h1>Admin Panel</h1>
 
-<section>
-  <h2>Conversions</h2>
-  <label for="conv-cats">Category numbers (comma-separated)</label>
-  <input type="text" id="conv-cats" placeholder="1, 2, 3" />
-  <button id="conv-btn">Get conversions</button>
-  <div id="conv-result" class="result"></div>
-</section>
+<div class="top-bar">
+  <h1>Admin Dashboard</h1>
+  <div class="range-selector">
+    <sl-button size="small" variant="default" data-range="1d">1d</sl-button>
+    <sl-button size="small" variant="default" data-range="7d">7d</sl-button>
+    <sl-button size="small" variant="default" data-range="1m">1m</sl-button>
+    <sl-button size="small" variant="default" data-range="all">All</sl-button>
+  </div>
+</div>
 
-<section>
-  <h2>Usernames</h2>
-  <label for="uname-cat">Category number</label>
-  <input type="text" id="uname-cat" placeholder="5" />
-  <button id="uname-btn">Get usernames</button>
-  <div id="uname-result" class="result"></div>
-</section>
+<sl-tab-group>
+  <sl-tab slot="nav" panel="overview">Overview</sl-tab>
+  <sl-tab slot="nav" panel="conversions">Conversions</sl-tab>
+
+  <sl-tab-panel name="overview">
+    <div class="tab-content active" id="overview-tab">
+      <div class="refresh-bar">
+        <sl-button id="overview-refresh" variant="primary" size="small">
+          <sl-icon slot="prefix" name="arrow-clockwise"></sl-icon>
+          Refresh
+        </sl-button>
+      </div>
+      <div id="overview-content"></div>
+    </div>
+  </sl-tab-panel>
+
+  <sl-tab-panel name="conversions">
+    <div class="tab-content" id="conversions-tab">
+      <div class="refresh-bar">
+        <sl-button id="conversions-refresh" variant="primary" size="small">
+          <sl-icon slot="prefix" name="arrow-clockwise"></sl-icon>
+          Refresh
+        </sl-button>
+      </div>
+      
+      <div class="conversion-controls">
+        <label style="display: block; margin-bottom: 8px; font-size: 0.9rem; font-weight: 600;">Select conversion groups (in order):</label>
+        <sl-select id="categories-select" multiple clearable placeholder="Choose categories..." style="width: 100%; margin-bottom: 16px;"></sl-select>
+      </div>
+      
+      <div id="conversions-content"></div>
+      
+      <div class="usernames-section">
+        <div class="section-title">User Details</div>
+        <div class="usernames-input">
+          <label style="display: block; margin-bottom: 8px; font-size: 0.9rem; font-weight: 600;">Get usernames for category:</label>
+          <sl-select id="username-category-select" placeholder="Choose a category..." style="width: 100%; margin-bottom: 12px;"></sl-select>
+        </div>
+        <sl-button id="usernames-btn" variant="default" size="small">Get Usernames</sl-button>
+        <div id="usernames-result" class="usernames-list" style="display: none; margin-top: 12px;"></div>
+      </div>
+    </div>
+  </sl-tab-panel>
+</sl-tab-group>
 
 <script>
 (function () {
@@ -117,6 +275,42 @@ button:disabled { opacity: 0.5; cursor: default; }
   }
 
   var errorBanner = document.getElementById("error-banner");
+  var currentRange = "7d";
+  var categories = [];
+  var overviewData = null;
+  var conversionsData = null;
+
+  // Range selector
+  var rangeButtons = document.querySelectorAll(".range-selector sl-button");
+  rangeButtons.forEach(function (btn) {
+    btn.addEventListener("click", function () {
+      rangeButtons.forEach(function (b) { b.variant = "default"; });
+      btn.variant = "primary";
+      currentRange = btn.getAttribute("data-range");
+      // Auto-refresh active tab when range changes
+      if (document.getElementById("overview-tab").classList.contains("active")) {
+        document.getElementById("overview-refresh").click();
+      } else if (document.getElementById("conversions-tab").classList.contains("active")) {
+        document.getElementById("conversions-refresh").click();
+      }
+    });
+  });
+  // Set default
+  rangeButtons[1].variant = "primary"; // 7d
+
+  // Tab switching
+  var tabGroup = document.querySelector("sl-tab-group");
+  tabGroup.addEventListener("sl-tab-show", function (e) {
+    document.querySelectorAll(".tab-content").forEach(function (tc) {
+      tc.classList.remove("active");
+    });
+    var panelName = e.detail.name;
+    if (panelName === "overview") {
+      document.getElementById("overview-tab").classList.add("active");
+    } else if (panelName === "conversions") {
+      document.getElementById("conversions-tab").classList.add("active");
+    }
+  });
 
   function getInitData() {
     return (tg && tg.initData) || "";
@@ -132,32 +326,25 @@ button:disabled { opacity: 0.5; cursor: default; }
     errorBanner.textContent = "";
   }
 
-  function showResult(el, text) {
-    el.textContent = text;
-    el.classList.add("visible");
-  }
-
-  function hideResult(el) {
-    el.classList.remove("visible");
-    el.textContent = "";
-  }
-
-  function adminFetch(path, body) {
+  function adminFetch(path, method, body) {
     hideError();
     var initData = getInitData();
     if (!initData) {
       showError("Telegram WebApp data is not available. Open this page from Telegram.");
       return Promise.reject(new Error("no initData"));
     }
-    return fetch(path, {
-      method: "POST",
+    var opts = {
+      method: method,
       headers: {
-        "Content-Type": "application/json",
         "X-Telegram-Init-Data": initData,
         "ngrok-skip-browser-warning": "1"
-      },
-      body: JSON.stringify(body)
-    }).then(function (resp) {
+      }
+    };
+    if (body) {
+      opts.headers["Content-Type"] = "application/json";
+      opts.body = JSON.stringify(body);
+    }
+    return fetch(path, opts).then(function (resp) {
       if (resp.status === 401) {
         showError("Authentication failed (401). Please re-open the Mini App from Telegram.");
         return Promise.reject(new Error("401"));
@@ -176,48 +363,377 @@ button:disabled { opacity: 0.5; cursor: default; }
     });
   }
 
-  /* --- Conversions --- */
-  var convBtn = document.getElementById("conv-btn");
-  var convCats = document.getElementById("conv-cats");
-  var convResult = document.getElementById("conv-result");
+  function renderMetricRow(label, value, tooltip) {
+    var row = document.createElement("div");
+    row.className = "metric-row";
+    
+    var labelDiv = document.createElement("div");
+    labelDiv.className = "metric-label";
+    labelDiv.textContent = label;
+    
+    if (tooltip) {
+      var tooltipEl = document.createElement("sl-tooltip");
+      tooltipEl.content = tooltip;
+      var icon = document.createElement("sl-icon");
+      icon.name = "info-circle";
+      icon.className = "info-icon";
+      tooltipEl.appendChild(icon);
+      labelDiv.appendChild(tooltipEl);
+    }
+    
+    var valueDiv = document.createElement("div");
+    valueDiv.className = "metric-value";
+    valueDiv.textContent = value;
+    
+    row.appendChild(labelDiv);
+    row.appendChild(valueDiv);
+    return row;
+  }
 
-  convBtn.addEventListener("click", function () {
-    hideResult(convResult);
-    var raw = convCats.value.trim();
-    if (!raw) return;
-    var categories = raw.split(",").map(function (s) { return parseInt(s.trim(), 10); });
-    if (categories.some(isNaN)) {
-      showError("Please enter valid numbers separated by commas.");
+  function renderSection(title, rows) {
+    var section = document.createElement("div");
+    section.className = "section";
+    
+    var titleDiv = document.createElement("div");
+    titleDiv.className = "section-title";
+    titleDiv.textContent = title;
+    section.appendChild(titleDiv);
+    
+    var card = document.createElement("div");
+    card.className = "metric-card";
+    rows.forEach(function (row) { card.appendChild(row); });
+    section.appendChild(card);
+    
+    return section;
+  }
+
+  function formatNumber(num) {
+    if (num == null) return "—";
+    return num.toLocaleString("en-US");
+  }
+
+  function formatPercent(num) {
+    if (num == null) return "—";
+    return num.toFixed(1) + "%";
+  }
+
+  function renderOverview(data) {
+    var container = document.getElementById("overview-content");
+    container.innerHTML = "";
+    
+    // Core KPIs
+    var coreRows = [
+      renderMetricRow("New Users", formatNumber(data.core_kpis.new_users), "Users created in the selected range"),
+      renderMetricRow("Active Users", formatNumber(data.core_kpis.active_users), "Users with last_active_at in the selected range"),
+      renderMetricRow("Reports Generated", formatNumber(data.core_kpis.reports_generated), "Reports with state=GENERATED completed in the selected range")
+    ];
+    container.appendChild(renderSection("Core KPIs", coreRows));
+    
+    // Payments
+    var paymentRows = [
+      renderMetricRow("Revenue", formatNumber(data.payments.revenue) + " ₽", "Sum of total_price for SUCCESS payments in range"),
+      renderMetricRow("Paying Users", formatNumber(data.payments.paying_users), "Distinct users with SUCCESS payments in range")
+    ];
+    
+    // By status
+    var statusEntries = Object.entries(data.payments.by_status);
+    if (statusEntries.length > 0) {
+      statusEntries.forEach(function (entry) {
+        paymentRows.push(renderMetricRow("  " + entry[0], formatNumber(entry[1]), "Payment count by status"));
+      });
+    }
+    
+    // By option
+    var optionEntries = Object.entries(data.payments.revenue_by_option);
+    if (optionEntries.length > 0) {
+      paymentRows.push(renderMetricRow("Revenue by Option", "", ""));
+      optionEntries.forEach(function (entry) {
+        paymentRows.push(renderMetricRow("  " + entry[0], formatNumber(entry[1]) + " ₽", "Revenue for this payment option"));
+      });
+    }
+    
+    container.appendChild(renderSection("Payments", paymentRows));
+    
+    // Referrals
+    var refRows = [
+      renderMetricRow("Active Referrers", formatNumber(data.referrals.active_referrers), "Distinct invited_by among users created in range"),
+      renderMetricRow("New Referred Users", formatNumber(data.referrals.new_referred_users), "Users created in range with invited_by not null"),
+      renderMetricRow("Avg Referrals/Referrer", formatNumber(data.referrals.referrals_per_referrer_avg), "Average referrals per active referrer"),
+      renderMetricRow("Median Referrals/Referrer", formatNumber(data.referrals.referrals_per_referrer_median), "Median referrals per active referrer"),
+      renderMetricRow("Qualified Referrals", formatNumber(data.referrals.qualified_referrals_count), "Referred users with ≥1 activation event (CLICK_COMPARE)"),
+      renderMetricRow("Qualified Rate", formatPercent(data.referrals.qualified_referrals_rate), "qualified_referrals_count / new_referred_users"),
+      renderMetricRow("Referred Revenue", formatNumber(data.referrals.referred_revenue) + " ₽", "Revenue from SUCCESS payments by referred users"),
+      renderMetricRow("Estimated Bonus", formatNumber(data.referrals.estimated_bonus_earned) + " ₽", "Sum of ceil(total_price * 0.2) for SUCCESS payments by referred users")
+    ];
+    
+    // Funnel
+    refRows.push(renderMetricRow("Funnel: Created", formatNumber(data.referrals.referral_funnel.created), "Referred users created in range"));
+    refRows.push(renderMetricRow("Funnel: Activated", formatNumber(data.referrals.referral_funnel.activated), "Referred users with activation event"));
+    refRows.push(renderMetricRow("Funnel: Paid", formatNumber(data.referrals.referral_funnel.paid), "Referred users with SUCCESS payment"));
+    
+    // Top referrers
+    if (data.referrals.top_referrers_by_referred_users.length > 0) {
+      refRows.push(renderMetricRow("Top Referrers (by users)", "", ""));
+      data.referrals.top_referrers_by_referred_users.forEach(function (r, idx) {
+        refRows.push(renderMetricRow("  " + (idx + 1) + ". User " + r.user_id, formatNumber(r.count), "Referred users count"));
+      });
+    }
+    
+    if (data.referrals.top_referrers_by_referred_revenue.length > 0) {
+      refRows.push(renderMetricRow("Top Referrers (by revenue)", "", ""));
+      data.referrals.top_referrers_by_referred_revenue.forEach(function (r, idx) {
+        refRows.push(renderMetricRow("  " + (idx + 1) + ". User " + r.user_id, formatNumber(r.revenue) + " ₽", "Referred revenue"));
+      });
+    }
+    
+    container.appendChild(renderSection("Referrals", refRows));
+    
+    // Repeat Reporters (all-time)
+    var rrRows = [
+      renderMetricRow("Repeat Reporters", formatNumber(data.repeat_reporters.repeat_reporters_count), "Users with ≥2 generated reports (all-time)"),
+      renderMetricRow("Repeat Rate", formatPercent(data.repeat_reporters.repeat_reporters_rate), "repeat_reporters_count / total_reporters_count (all-time)")
+    ];
+    container.appendChild(renderSection("Repeat Reporters (All-Time)", rrRows));
+    
+    // Payer Segmentation
+    var psRows = [
+      renderMetricRow("New Payers", formatNumber(data.payer_segmentation.new_payer_count), "Users with first SUCCESS payment in range"),
+      renderMetricRow("Returning Payers", formatNumber(data.payer_segmentation.returning_payer_count), "Users with SUCCESS payment before range_start AND in range"),
+      renderMetricRow("Churned Payers", formatNumber(data.payer_segmentation.churned_payer_count), "Users with ≥1 SUCCESS payment historically but none in last 60 days"),
+      renderMetricRow("One-Time Payers", formatNumber(data.payer_segmentation.one_time_payer_count), "Exactly 1 SUCCESS payment (all-time)"),
+      renderMetricRow("Repeat Payers", formatNumber(data.payer_segmentation.repeat_payer_count), "2–3 SUCCESS payments (all-time)"),
+      renderMetricRow("Power Payers", formatNumber(data.payer_segmentation.power_payer_count), "4+ SUCCESS payments (all-time)")
+    ];
+    container.appendChild(renderSection("Payer Segmentation", psRows));
+  }
+
+  function renderConversions(data) {
+    var container = document.getElementById("conversions-content");
+    container.innerHTML = "";
+    
+    if (!data.groups || data.groups.length === 0) {
+      container.innerHTML = "<p style='color: var(--tg-hint);'>Select categories to view conversions.</p>";
       return;
     }
-    convBtn.disabled = true;
-    adminFetch("/api/admin/conversions", { categories: categories })
+    
+    // Group sizes table
+    var section1 = document.createElement("div");
+    section1.className = "section";
+    var title1 = document.createElement("div");
+    title1.className = "section-title";
+    title1.textContent = "Group Sizes";
+    section1.appendChild(title1);
+    
+    var table1 = document.createElement("table");
+    table1.className = "group-sizes-table";
+    var thead1 = document.createElement("thead");
+    var headerRow1 = document.createElement("tr");
+    ["Category", "Label", "Size"].forEach(function (h) {
+      var th = document.createElement("th");
+      th.textContent = h;
+      headerRow1.appendChild(th);
+    });
+    thead1.appendChild(headerRow1);
+    table1.appendChild(thead1);
+    
+    var tbody1 = document.createElement("tbody");
+    data.groups.forEach(function (g) {
+      var tr = document.createElement("tr");
+      
+      var tdCat = document.createElement("td");
+      tdCat.textContent = g.category;
+      tr.appendChild(tdCat);
+      
+      var tdLabel = document.createElement("td");
+      var catObj = categories.find(function (c) { return c.category === g.category; });
+      var labelText = catObj ? catObj.label : "—";
+      tdLabel.textContent = labelText;
+      
+      if (!g.range_applied) {
+        var badge = document.createElement("span");
+        badge.className = "all-time-badge";
+        var badgeTooltip = document.createElement("sl-tooltip");
+        badgeTooltip.content = "This group is computed all-time (range not applied)";
+        var badgeIcon = document.createElement("sl-icon");
+        badgeIcon.name = "clock-history";
+        badgeIcon.style.fontSize = "0.75rem";
+        badgeTooltip.appendChild(badgeIcon);
+        badge.appendChild(badgeTooltip);
+        var badgeText = document.createTextNode(" All-Time");
+        badge.appendChild(badgeText);
+        tdLabel.appendChild(badge);
+      }
+      
+      tr.appendChild(tdLabel);
+      
+      var tdSize = document.createElement("td");
+      tdSize.textContent = formatNumber(g.size);
+      tr.appendChild(tdSize);
+      
+      tbody1.appendChild(tr);
+    });
+    table1.appendChild(tbody1);
+    section1.appendChild(table1);
+    container.appendChild(section1);
+    
+    // Conversions table
+    if (data.conversions && data.conversions.length > 0) {
+      var section2 = document.createElement("div");
+      section2.className = "section";
+      var title2 = document.createElement("div");
+      title2.className = "section-title";
+      title2.textContent = "Adjacent Conversions";
+      section2.appendChild(title2);
+      
+      var table2 = document.createElement("table");
+      table2.className = "conversions-table";
+      var thead2 = document.createElement("thead");
+      var headerRow2 = document.createElement("tr");
+      ["From", "To", "Conversion %"].forEach(function (h) {
+        var th = document.createElement("th");
+        th.textContent = h;
+        headerRow2.appendChild(th);
+      });
+      thead2.appendChild(headerRow2);
+      table2.appendChild(thead2);
+      
+      var tbody2 = document.createElement("tbody");
+      data.conversions.forEach(function (c) {
+        var tr = document.createElement("tr");
+        
+        var tdFrom = document.createElement("td");
+        var fromCat = categories.find(function (cat) { return cat.category === c.from_category; });
+        tdFrom.textContent = fromCat ? fromCat.label : "Category " + c.from_category;
+        tr.appendChild(tdFrom);
+        
+        var tdTo = document.createElement("td");
+        var toCat = categories.find(function (cat) { return cat.category === c.to_category; });
+        tdTo.textContent = toCat ? toCat.label : "Category " + c.to_category;
+        tr.appendChild(tdTo);
+        
+        var tdPercent = document.createElement("td");
+        var percentDiv = document.createElement("div");
+        percentDiv.className = "conversion-percent";
+        
+        var percentText = document.createElement("span");
+        percentText.textContent = c.percent != null ? formatPercent(c.percent) : "—";
+        percentDiv.appendChild(percentText);
+        
+        var tooltipContent = "Formula: (from ∩ to) / from\\n" +
+                             "Numerator: " + formatNumber(c.numerator) + "\\n" +
+                             "Denominator: " + formatNumber(c.denominator);
+        var tooltipEl = document.createElement("sl-tooltip");
+        tooltipEl.content = tooltipContent;
+        var icon = document.createElement("sl-icon");
+        icon.name = "info-circle";
+        icon.className = "info-icon";
+        tooltipEl.appendChild(icon);
+        percentDiv.appendChild(tooltipEl);
+        
+        tdPercent.appendChild(percentDiv);
+        tr.appendChild(tdPercent);
+        
+        tbody2.appendChild(tr);
+      });
+      table2.appendChild(tbody2);
+      section2.appendChild(table2);
+      container.appendChild(section2);
+    }
+  }
+
+  // Load categories
+  function loadCategories() {
+    return adminFetch("/api/admin/categories", "GET", null).then(function (data) {
+      categories = data.categories;
+      var select = document.getElementById("categories-select");
+      var usernameSelect = document.getElementById("username-category-select");
+      categories.forEach(function (cat) {
+        var option = document.createElement("sl-option");
+        option.value = cat.category;
+        option.textContent = cat.category + ". " + cat.label;
+        select.appendChild(option);
+        
+        var usernameOption = document.createElement("sl-option");
+        usernameOption.value = cat.category;
+        usernameOption.textContent = cat.category + ". " + cat.label;
+        usernameSelect.appendChild(usernameOption);
+      });
+    });
+  }
+
+  // Overview refresh
+  document.getElementById("overview-refresh").addEventListener("click", function () {
+    var btn = document.getElementById("overview-refresh");
+    btn.loading = true;
+    adminFetch("/api/admin/overview", "POST", { range: currentRange })
       .then(function (data) {
-        showResult(convResult, JSON.stringify(data, null, 2));
+        overviewData = data;
+        renderOverview(data);
       })
       .catch(function () { /* error already shown */ })
-      .finally(function () { convBtn.disabled = false; });
+      .finally(function () { btn.loading = false; });
   });
 
-  /* --- Usernames --- */
-  var unameBtn = document.getElementById("uname-btn");
-  var unameCat = document.getElementById("uname-cat");
-  var unameResult = document.getElementById("uname-result");
-
-  unameBtn.addEventListener("click", function () {
-    hideResult(unameResult);
-    var val = parseInt(unameCat.value.trim(), 10);
-    if (isNaN(val)) {
-      showError("Please enter a valid category number.");
+  // Conversions refresh
+  document.getElementById("conversions-refresh").addEventListener("click", function () {
+    var select = document.getElementById("categories-select");
+    var selectedCats = select.value;
+    if (!selectedCats || selectedCats.length === 0) {
+      showError("Please select at least one category.");
       return;
     }
-    unameBtn.disabled = true;
-    adminFetch("/api/admin/usernames", { category: val })
+    var cats = selectedCats.map(function (v) { return parseInt(v, 10); });
+    
+    var btn = document.getElementById("conversions-refresh");
+    btn.loading = true;
+    adminFetch("/api/admin/conversions", "POST", { range: currentRange, categories: cats })
       .then(function (data) {
-        showResult(unameResult, JSON.stringify(data, null, 2));
+        conversionsData = data;
+        renderConversions(data);
       })
       .catch(function () { /* error already shown */ })
-      .finally(function () { unameBtn.disabled = false; });
+      .finally(function () { btn.loading = false; });
+  });
+
+  // Usernames
+  document.getElementById("usernames-btn").addEventListener("click", function () {
+    var select = document.getElementById("username-category-select");
+    var val = select.value;
+    if (!val) {
+      showError("Please select a category.");
+      return;
+    }
+    var categoryNum = parseInt(val, 10);
+    
+    var btn = document.getElementById("usernames-btn");
+    var resultDiv = document.getElementById("usernames-result");
+    btn.loading = true;
+    resultDiv.style.display = "none";
+    
+    adminFetch("/api/admin/usernames", "POST", { category: categoryNum })
+      .then(function (data) {
+        var text = "Category: " + data.category + "\\n" +
+                   "Label: " + data.label + "\\n" +
+                   "Total: " + data.total + "\\n\\n";
+        if (data.users && data.users.length > 0) {
+          text += "Users:\\n";
+          data.users.forEach(function (u) {
+            text += "  " + u.user_id + ": " + (u.username || "(no username)") + "\\n";
+          });
+        } else {
+          text += "No users found.";
+        }
+        resultDiv.textContent = text;
+        resultDiv.style.display = "block";
+      })
+      .catch(function () { /* error already shown */ })
+      .finally(function () { btn.loading = false; });
+  });
+
+  // Initialize
+  loadCategories().then(function () {
+    // Auto-load overview on startup
+    document.getElementById("overview-refresh").click();
   });
 })();
 </script>

@@ -21,16 +21,29 @@ The Mini App client MUST send `X-Telegram-Init-Data` with every request to `/api
 - **THEN** the request includes `X-Telegram-Init-Data` with the current `initData` string
 
 ### Requirement: Conversions endpoint returns counts and step conversions
-`POST /api/admin/conversions` MUST accept a request that identifies a sequence of category numbers (integers) representing steps in a funnel.
+`POST /api/admin/conversions` MUST accept a request that identifies:
+- a range preset (`1d|7d|1m|all`)
+- an ordered sequence of category numbers (integers) representing conversion groups
+
+For the selected range, each category MUST resolve to a set of user IDs \(U(G)\):
+- Event-based category: distinct `events.user_id` where `event_type` matches the category's event(s) and `events.timestamp ∈ range`.
+- Callable/segment category: category maps to a server-side function returning user IDs; it MAY ignore range.
 
 The endpoint MUST return:
-- count per step
-- conversion percentage per step transition (step \(i-1\) → step \(i\))
+- `groups`: one entry per requested category with:
+  - `category`: the category number
+  - `size`: \(|U(G)|\)
+  - `range_applied`: boolean indicating whether the selected range was applied when computing \(U(G)\)
+- `conversions`: one entry per adjacent transition \(G_i → G_{i+1}\) with:
+  - `from_category`, `to_category`
+  - `numerator`: \(|U(G_{i+1}) ∩ U(G_i)|\)
+  - `denominator`: \(|U(G_i)|\)
+  - `percent`: `numerator / denominator * 100` when `denominator > 0`, otherwise `null`
 
 #### Scenario: Compute conversions for a 3-step funnel
-- **WHEN** an admin submits categories `[1, 2, 3]`
-- **THEN** the server returns counts for steps 1, 2, 3
-- **AND THEN** the server returns conversion percentages for `1→2` and `2→3`
+- **WHEN** an admin submits categories `[1, 3, 10]` with `range="7d"`
+- **THEN** the server returns `groups` for categories `1`, `3`, and `10` including `size` for each
+- **AND THEN** the server returns conversion entries for `1→3` and `3→10`
 
 ### Requirement: Usernames endpoint returns usernames for a category
 `POST /api/admin/usernames` MUST accept a request that identifies a single category number (integer).

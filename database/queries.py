@@ -1,8 +1,9 @@
 """Database query functions"""
 
 import logging
-from typing import Optional
 from datetime import datetime
+from typing import Optional
+
 from .client import get_supabase
 from .models import (
     User,
@@ -511,12 +512,19 @@ async def update_report_state(report_id: int, state: ReportState) -> Optional[Re
 # Conversion analytics functions
 
 
-async def get_unique_user_ids_by_events(event_types: list[EventType]) -> list[int]:
+async def get_unique_user_ids_by_events(
+    event_types: list[EventType],
+    range_start: Optional[datetime] = None,
+    range_end: Optional[datetime] = None,
+) -> list[int]:
     """
     Get unique user IDs who have at least one event of any of the given types.
 
     Args:
         event_types: List of event types to filter by (OR logic)
+        range_start: Optional lower bound for events.timestamp (inclusive)
+        range_end: Optional upper bound for events.timestamp (inclusive).
+            When range_start is None (all-time), only range_end is applied.
 
     Returns:
         list[int]: Unique user IDs
@@ -532,9 +540,14 @@ async def get_unique_user_ids_by_events(event_types: list[EventType]) -> list[in
         while True:
             query = (
                 supabase.table("events")
-                .select("user_id")
+                .select("user_id,timestamp")
                 .in_("event_type", event_values)
             )
+            if range_start is not None:
+                query = query.gte("timestamp", range_start.isoformat())
+            if range_end is not None:
+                query = query.lte("timestamp", range_end.isoformat())
+
             resp = query.range(offset, offset + batch_size - 1).execute()
             batch = resp.data or []
             all_data.extend(batch)
@@ -553,17 +566,27 @@ async def get_unique_user_ids_by_events(event_types: list[EventType]) -> list[in
         return []
 
 
-async def count_unique_users_by_events(event_types: list[EventType]) -> int:
+async def count_unique_users_by_events(
+    event_types: list[EventType],
+    range_start: Optional[datetime] = None,
+    range_end: Optional[datetime] = None,
+) -> int:
     """
     Count unique users who have at least one event of any of the given types.
 
     Args:
         event_types: List of event types to filter by (OR logic)
+        range_start: Optional lower bound for events.timestamp
+        range_end: Optional upper bound for events.timestamp
 
     Returns:
         int: Number of unique users
     """
-    return len(await get_unique_user_ids_by_events(event_types))
+    return len(
+        await get_unique_user_ids_by_events(
+            event_types, range_start=range_start, range_end=range_end
+        )
+    )
 
 
 async def get_usernames_by_ids(user_ids: list[int]) -> dict[int, Optional[str]]:
