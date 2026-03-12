@@ -14,7 +14,7 @@ sys.modules["bot.config"] = MagicMock()
 sys.modules["database.client"] = MagicMock()
 
 # Create a mock CONVERSION_CATEGORIES that tests can override
-from database.models import EventType
+from database.models import EventType  # noqa: E402
 
 MOCK_CONVERSION_CATEGORIES = {
     1: ("Started bot", [EventType.CLICK_START]),
@@ -22,4 +22,4 @@ MOCK_CONVERSION_CATEGORIES = {
     3: ("Generated report", []),
 }
 
-sys.modules["bot.handlers.admin"].CONVERSION_CATEGORIES = MOCK_CONVERSION_CATEGORIES
+sys.modules["bot.handlers.admin"].CONVERSION_CATEGORIES = MOCK_CONVERSION_CATEGORIES  # type: ignore[attr-defined]

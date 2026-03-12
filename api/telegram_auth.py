@@ -11,7 +11,7 @@ import hmac
 import json
 import logging
 from dataclasses import dataclass
-from urllib.parse import parse_qs, unquote
+from urllib.parse import parse_qs
 
 logger = logging.getLogger(__name__)
 
@@ -52,9 +52,7 @@ def verify_init_data(raw: str, bot_token: str) -> bool:
     if not received_hash:
         return False
 
-    data_check_string = "\n".join(
-        f"{k}={v}" for k, v in sorted(params.items())
-    )
+    data_check_string = "\n".join(f"{k}={v}" for k, v in sorted(params.items()))
 
     secret_key = _make_secret_key(bot_token)
     computed = hmac.new(

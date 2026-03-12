@@ -11,7 +11,7 @@ from __future__ import annotations
 import hashlib
 import hmac
 import json
-from datetime import datetime, timezone
+from datetime import datetime
 from typing import Any
 from unittest.mock import AsyncMock, patch
 from urllib.parse import urlencode
@@ -27,7 +27,6 @@ from api.admin_handlers import (
     prices_list_handler,
     prices_update_handler,
 )
-from database.models import EventType, Price, ProductOption
 from api.admin_models import (
     CoreKPIs,
     PayerSegmentation,
@@ -38,9 +37,9 @@ from api.admin_models import (
     RepeatReporters,
     RevenueReferrerEntry,
 )
-from api.telegram_auth import TelegramWebAppUser
+from database.models import Price, ProductOption
 
-BOT_TOKEN = "1234567890:ABCdefGHIjklMNOpqrsTUVwxyz"
+BOT_TOKEN = "1234567890:ABCdefGHIjklMNOpqrsTUVwxyz"  # nosec B105
 
 
 # ---------------------------------------------------------------------------
@@ -89,7 +88,7 @@ def _make_admin_app(
     """Create test app with admin auth middleware."""
     from api.admin_auth import admin_auth_middleware
 
-    app = web.Application(middlewares=[admin_auth_middleware])
+    app = web.Application(middlewares=[admin_auth_middleware])  # type: ignore[list-item]
     app.router.add_post("/api/admin/overview", overview_handler)
     app.router.add_post("/api/admin/conversions", conversions_handler)
     if include_broadcast:
@@ -122,12 +121,12 @@ class TestOverviewAuth:
         with patch("api.admin_auth.settings", _MOCK_SETTINGS):
             app = _make_admin_app()
             client: TestClient = await aiohttp_client(app)
-            
+
             resp = await client.post(
                 "/api/admin/overview",
                 json={"range": "1d"},
             )
-        
+
         assert resp.status == 401
         body = await resp.json()
         assert "error" in body
@@ -139,17 +138,17 @@ class TestOverviewAuth:
     ) -> None:
         """Invalid initData signature should return 401."""
         tampered = admin_init_data[:-8] + "00000000"
-        
+
         with patch("api.admin_auth.settings", _MOCK_SETTINGS):
             app = _make_admin_app()
             client: TestClient = await aiohttp_client(app)
-            
+
             resp = await client.post(
                 "/api/admin/overview",
                 json={"range": "1d"},
                 headers={"X-Telegram-Init-Data": tampered},
             )
-        
+
         assert resp.status == 401
         body = await resp.json()
         assert "error" in body
@@ -162,13 +161,13 @@ class TestOverviewAuth:
         with patch("api.admin_auth.settings", _MOCK_SETTINGS):
             app = _make_admin_app()
             client: TestClient = await aiohttp_client(app)
-            
+
             resp = await client.post(
                 "/api/admin/overview",
                 json={"range": "1d"},
                 headers={"X-Telegram-Init-Data": non_admin_init_data},
             )
-        
+
         assert resp.status == 403
         body = await resp.json()
         assert "error" in body
@@ -182,7 +181,7 @@ class TestOverviewAuth:
         with patch("api.admin_auth.settings", _MOCK_SETTINGS):
             app = _make_admin_app()
             client: TestClient = await aiohttp_client(app)
-            
+
             resp = await client.post(
                 "/api/admin/overview",
                 data="not-json",
@@ -191,7 +190,7 @@ class TestOverviewAuth:
                     "Content-Type": "application/json",
                 },
             )
-        
+
         assert resp.status == 400
 
     @pytest.mark.asyncio
@@ -202,13 +201,13 @@ class TestOverviewAuth:
         with patch("api.admin_auth.settings", _MOCK_SETTINGS):
             app = _make_admin_app()
             client: TestClient = await aiohttp_client(app)
-            
+
             resp = await client.post(
                 "/api/admin/overview",
                 json={"range": "invalid"},
                 headers={"X-Telegram-Init-Data": admin_init_data},
             )
-        
+
         assert resp.status == 400
         body = await resp.json()
         assert "error" in body
@@ -268,25 +267,39 @@ class TestOverviewResponse:
             repeat_payer_count=1,
             power_payer_count=1,
         )
-        
+
         with patch("api.admin_auth.settings", _MOCK_SETTINGS):
-            with patch("api.admin_handlers.fetch_core_kpis", return_value=mock_core_kpis):
-                with patch("api.admin_handlers.fetch_payment_metrics", return_value=mock_payments):
-                    with patch("api.admin_handlers.fetch_referral_metrics", return_value=mock_referrals):
-                        with patch("api.admin_handlers.fetch_repeat_reporters", return_value=mock_repeat_reporters):
-                            with patch("api.admin_handlers.fetch_payer_segmentation", return_value=mock_payer_segmentation):
+            with patch(
+                "api.admin_handlers.fetch_core_kpis", return_value=mock_core_kpis
+            ):
+                with patch(
+                    "api.admin_handlers.fetch_payment_metrics",
+                    return_value=mock_payments,
+                ):
+                    with patch(
+                        "api.admin_handlers.fetch_referral_metrics",
+                        return_value=mock_referrals,
+                    ):
+                        with patch(
+                            "api.admin_handlers.fetch_repeat_reporters",
+                            return_value=mock_repeat_reporters,
+                        ):
+                            with patch(
+                                "api.admin_handlers.fetch_payer_segmentation",
+                                return_value=mock_payer_segmentation,
+                            ):
                                 app = _make_admin_app()
                                 client: TestClient = await aiohttp_client(app)
-                                
+
                                 resp = await client.post(
                                     "/api/admin/overview",
                                     json={"range": "7d"},
                                     headers={"X-Telegram-Init-Data": admin_init_data},
                                 )
-        
+
         assert resp.status == 200
         body = await resp.json()
-        
+
         # Verify top-level structure
         assert "range" in body
         assert body["range"] == "7d"
@@ -297,29 +310,29 @@ class TestOverviewResponse:
         assert "referrals" in body
         assert "repeat_reporters" in body
         assert "payer_segmentation" in body
-        
+
         # Verify core_kpis section
         assert body["core_kpis"]["new_users"] == 10
         assert body["core_kpis"]["active_users"] == 8
         assert body["core_kpis"]["reports_generated"] == 25
-        
+
         # Verify payments section
         assert body["payments"]["revenue"] == 5000
         assert body["payments"]["paying_users"] == 3
         assert "by_status" in body["payments"]
         assert "revenue_by_option" in body["payments"]
-        
+
         # Verify referrals section
         assert body["referrals"]["active_referrers"] == 2
         assert body["referrals"]["new_referred_users"] == 5
         assert body["referrals"]["qualified_referrals_count"] == 4
         assert body["referrals"]["qualified_referrals_rate"] == 0.8
         assert len(body["referrals"]["top_referrers_by_referred_users"]) == 2
-        
+
         # Verify repeat_reporters section
         assert body["repeat_reporters"]["repeat_reporters_count"] == 3
         assert body["repeat_reporters"]["repeat_reporters_rate"] == 0.3
-        
+
         # Verify payer_segmentation section
         assert body["payer_segmentation"]["new_payer_count"] == 2
         assert body["payer_segmentation"]["one_time_payer_count"] == 1
@@ -357,29 +370,43 @@ class TestOverviewResponse:
             repeat_payer_count=0,
             power_payer_count=0,
         )
-        
+
         with patch("api.admin_auth.settings", _MOCK_SETTINGS):
-            with patch("api.admin_handlers.fetch_core_kpis", return_value=mock_core_kpis):
-                with patch("api.admin_handlers.fetch_payment_metrics", return_value=mock_payments):
-                    with patch("api.admin_handlers.fetch_referral_metrics", return_value=mock_referrals):
-                        with patch("api.admin_handlers.fetch_repeat_reporters", return_value=mock_repeat_reporters):
-                            with patch("api.admin_handlers.fetch_payer_segmentation", return_value=mock_payer_segmentation):
+            with patch(
+                "api.admin_handlers.fetch_core_kpis", return_value=mock_core_kpis
+            ):
+                with patch(
+                    "api.admin_handlers.fetch_payment_metrics",
+                    return_value=mock_payments,
+                ):
+                    with patch(
+                        "api.admin_handlers.fetch_referral_metrics",
+                        return_value=mock_referrals,
+                    ):
+                        with patch(
+                            "api.admin_handlers.fetch_repeat_reporters",
+                            return_value=mock_repeat_reporters,
+                        ):
+                            with patch(
+                                "api.admin_handlers.fetch_payer_segmentation",
+                                return_value=mock_payer_segmentation,
+                            ):
                                 app = _make_admin_app()
                                 client: TestClient = await aiohttp_client(app)
-                                
+
                                 resp = await client.post(
                                     "/api/admin/overview",
                                     json={"range": "all"},
                                     headers={"X-Telegram-Init-Data": admin_init_data},
                                 )
-        
+
         assert resp.status == 200
         body = await resp.json()
-        
+
         assert body["range"] == "all"
         assert body["range_start"] is None  # "all" preset has no start
         assert body["range_end"] is not None
-        
+
         # Verify range_end is a valid ISO datetime (handle 'Z' suffix for Python 3.9)
         range_end_str = body["range_end"].replace("Z", "+00:00")
         range_end = datetime.fromisoformat(range_end_str)
@@ -400,37 +427,40 @@ class TestConversionsHandler:
     ) -> None:
         """Groups should report correct sizes and range_applied flag."""
         # Mock CONVERSION_CATEGORIES
-        mock_categories = {
+        mock_categories: dict[int, tuple[str, list[Any]]] = {
             1: ("Started bot", []),
             2: ("Clicked compare", []),
             3: ("Generated report", []),
         }
-        
-        # Mock resolution functions
-        async def mock_resolve(source: Any, range_start: Any, range_end: Any) -> tuple[list[int], bool]:
-            # Simulate event-based (range_applied=True) vs callable (range_applied=False)
+
+        async def mock_resolve(
+            source: Any, _range_start: Any, _range_end: Any
+        ) -> tuple[list[int], bool]:
             if callable(source):
                 return [1, 2, 3], False
             return [1, 2, 3, 4, 5], True
-        
+
         with patch("api.admin_auth.settings", _MOCK_SETTINGS):
             with patch("api.admin_handlers.CONVERSION_CATEGORIES", mock_categories):
-                with patch("api.admin_handlers._resolve_category_with_range", side_effect=mock_resolve):
+                with patch(
+                    "api.admin_handlers._resolve_category_with_range",
+                    side_effect=mock_resolve,
+                ):
                     app = _make_admin_app()
                     client: TestClient = await aiohttp_client(app)
-                    
+
                     resp = await client.post(
                         "/api/admin/conversions",
                         json={"range": "7d", "categories": [1, 2, 3]},
                         headers={"X-Telegram-Init-Data": admin_init_data},
                     )
-        
+
         assert resp.status == 200
         body = await resp.json()
-        
+
         assert "groups" in body
         assert len(body["groups"]) == 3
-        
+
         for group in body["groups"]:
             assert "category" in group
             assert "size" in group
@@ -443,42 +473,47 @@ class TestConversionsHandler:
         self, aiohttp_client: Any, admin_init_data: str
     ) -> None:
         """Adjacent conversions should compute numerator/denominator/percent correctly."""
-        mock_categories = {
+        mock_categories: dict[int, tuple[str, list[Any]]] = {
             1: ("Group A", []),
             2: ("Group B", []),
             3: ("Group C", []),
         }
-        
+
         # Define specific user sets for each category
         call_count = 0
-        async def mock_resolve(source: Any, range_start: Any, range_end: Any) -> tuple[list[int], bool]:
+
+        async def mock_resolve(
+            _source: Any, _range_start: Any, _range_end: Any
+        ) -> tuple[list[int], bool]:
             nonlocal call_count
             call_count += 1
-            if call_count == 1:  # Category 1: 10 users
+            if call_count == 1:
                 return list(range(1, 11)), True
-            elif call_count == 2:  # Category 2: 6 users (overlap with 1)
+            if call_count == 2:
                 return list(range(1, 7)), True
-            else:  # Category 3: 3 users (overlap with 2)
-                return list(range(1, 4)), True
-        
+            return list(range(1, 4)), True
+
         with patch("api.admin_auth.settings", _MOCK_SETTINGS):
             with patch("api.admin_handlers.CONVERSION_CATEGORIES", mock_categories):
-                with patch("api.admin_handlers._resolve_category_with_range", side_effect=mock_resolve):
+                with patch(
+                    "api.admin_handlers._resolve_category_with_range",
+                    side_effect=mock_resolve,
+                ):
                     app = _make_admin_app()
                     client: TestClient = await aiohttp_client(app)
-                    
+
                     resp = await client.post(
                         "/api/admin/conversions",
                         json={"range": "1d", "categories": [1, 2, 3]},
                         headers={"X-Telegram-Init-Data": admin_init_data},
                     )
-        
+
         assert resp.status == 200
         body = await resp.json()
-        
+
         assert "conversions" in body
-        assert len(body["conversions"]) == 2  # 3 categories → 2 adjacent pairs
-        
+        assert len(body["conversions"]) == 2
+
         # First conversion: 1→2
         conv1 = body["conversions"][0]
         assert conv1["from_category"] == 1
@@ -486,7 +521,7 @@ class TestConversionsHandler:
         assert conv1["numerator"] == 6  # Users in both 1 and 2
         assert conv1["denominator"] == 10  # Users in 1
         assert conv1["percent"] == 60.0  # 6/10 * 100
-        
+
         # Second conversion: 2→3
         conv2 = body["conversions"][1]
         assert conv2["from_category"] == 2
@@ -500,35 +535,40 @@ class TestConversionsHandler:
         self, aiohttp_client: Any, admin_init_data: str
     ) -> None:
         """When denominator is 0, percent should be null."""
-        mock_categories = {
+        mock_categories: dict[int, tuple[str, list[Any]]] = {
             1: ("Empty group", []),
             2: ("Another group", []),
         }
-        
+
         call_count = 0
-        async def mock_resolve(source: Any, range_start: Any, range_end: Any) -> tuple[list[int], bool]:
+
+        async def mock_resolve(
+            _source: Any, _range_start: Any, _range_end: Any
+        ) -> tuple[list[int], bool]:
             nonlocal call_count
             call_count += 1
-            if call_count == 1:  # Category 1: 0 users
+            if call_count == 1:
                 return [], True
-            else:  # Category 2: 5 users
-                return [1, 2, 3, 4, 5], True
-        
+            return [1, 2, 3, 4, 5], True
+
         with patch("api.admin_auth.settings", _MOCK_SETTINGS):
             with patch("api.admin_handlers.CONVERSION_CATEGORIES", mock_categories):
-                with patch("api.admin_handlers._resolve_category_with_range", side_effect=mock_resolve):
+                with patch(
+                    "api.admin_handlers._resolve_category_with_range",
+                    side_effect=mock_resolve,
+                ):
                     app = _make_admin_app()
                     client: TestClient = await aiohttp_client(app)
-                    
+
                     resp = await client.post(
                         "/api/admin/conversions",
                         json={"range": "1d", "categories": [1, 2]},
                         headers={"X-Telegram-Init-Data": admin_init_data},
                     )
-        
+
         assert resp.status == 200
         body = await resp.json()
-        
+
         assert len(body["conversions"]) == 1
         conv = body["conversions"][0]
         assert conv["numerator"] == 0
@@ -540,19 +580,19 @@ class TestConversionsHandler:
         self, aiohttp_client: Any, admin_init_data: str
     ) -> None:
         """Invalid category numbers should return 400."""
-        mock_categories = {1: ("Valid", []), 2: ("Valid", [])}
-        
+        mock_categories: dict[int, tuple[str, list[Any]]] = {1: ("Valid", []), 2: ("Valid", [])}
+
         with patch("api.admin_auth.settings", _MOCK_SETTINGS):
             with patch("api.admin_handlers.CONVERSION_CATEGORIES", mock_categories):
                 app = _make_admin_app()
                 client: TestClient = await aiohttp_client(app)
-                
+
                 resp = await client.post(
                     "/api/admin/conversions",
                     json={"range": "1d", "categories": [1, 999]},
                     headers={"X-Telegram-Init-Data": admin_init_data},
                 )
-        
+
         assert resp.status == 400
         body = await resp.json()
         assert "error" in body
@@ -566,13 +606,13 @@ class TestConversionsHandler:
         with patch("api.admin_auth.settings", _MOCK_SETTINGS):
             app = _make_admin_app()
             client: TestClient = await aiohttp_client(app)
-            
+
             resp = await client.post(
                 "/api/admin/conversions",
                 json={"range": "1d", "categories": []},
                 headers={"X-Telegram-Init-Data": admin_init_data},
             )
-        
+
         assert resp.status == 400
 
     @pytest.mark.asyncio
@@ -580,35 +620,40 @@ class TestConversionsHandler:
         self, aiohttp_client: Any, admin_init_data: str
     ) -> None:
         """Percent should be rounded to 1 decimal place."""
-        mock_categories = {
+        mock_categories: dict[int, tuple[str, list[Any]]] = {
             1: ("Group A", []),
             2: ("Group B", []),
         }
-        
+
         call_count = 0
-        async def mock_resolve(source: Any, range_start: Any, range_end: Any) -> tuple[list[int], bool]:
+
+        async def mock_resolve(
+            _source: Any, _range_start: Any, _range_end: Any
+        ) -> tuple[list[int], bool]:
             nonlocal call_count
             call_count += 1
-            if call_count == 1:  # Category 1: 7 users
+            if call_count == 1:
                 return [1, 2, 3, 4, 5, 6, 7], True
-            else:  # Category 2: 2 users (overlap)
-                return [1, 2], True
-        
+            return [1, 2], True
+
         with patch("api.admin_auth.settings", _MOCK_SETTINGS):
             with patch("api.admin_handlers.CONVERSION_CATEGORIES", mock_categories):
-                with patch("api.admin_handlers._resolve_category_with_range", side_effect=mock_resolve):
+                with patch(
+                    "api.admin_handlers._resolve_category_with_range",
+                    side_effect=mock_resolve,
+                ):
                     app = _make_admin_app()
                     client: TestClient = await aiohttp_client(app)
-                    
+
                     resp = await client.post(
                         "/api/admin/conversions",
                         json={"range": "1d", "categories": [1, 2]},
                         headers={"X-Telegram-Init-Data": admin_init_data},
                     )
-        
+
         assert resp.status == 200
         body = await resp.json()
-        
+
         conv = body["conversions"][0]
         # 2/7 * 100 = 28.571... → should round to 28.6
         assert conv["percent"] == 28.6
@@ -704,6 +749,7 @@ class TestBroadcastHandler:
         self, aiohttp_client: Any, admin_init_data: str
     ) -> None:
         """Successful broadcast should return sent, failed, total."""
+
         async def mock_resolve(_source: Any) -> list[int]:
             return [100, 200, 300]
 
@@ -711,7 +757,9 @@ class TestBroadcastHandler:
         mock_bot.send_message = AsyncMock(return_value=None)
 
         with patch("api.admin_auth.settings", _MOCK_SETTINGS):
-            with patch("api.admin_handlers._resolve_user_ids", side_effect=mock_resolve):
+            with patch(
+                "api.admin_handlers._resolve_user_ids", side_effect=mock_resolve
+            ):
                 app = _make_admin_app(include_broadcast=True)
                 app["bot"] = mock_bot
                 client: TestClient = await aiohttp_client(app)
@@ -746,7 +794,9 @@ class TestBroadcastButtonPreset:
         mock_bot.send_message = AsyncMock(return_value=None)
 
         with patch("api.admin_auth.settings", _MOCK_SETTINGS):
-            with patch("api.admin_handlers._resolve_user_ids", side_effect=mock_resolve):
+            with patch(
+                "api.admin_handlers._resolve_user_ids", side_effect=mock_resolve
+            ):
                 app = _make_admin_app(include_broadcast=True)
                 app["bot"] = mock_bot
                 client: TestClient = await aiohttp_client(app)
@@ -777,7 +827,9 @@ class TestBroadcastButtonPreset:
         mock_bot.send_message = AsyncMock(return_value=None)
 
         with patch("api.admin_auth.settings", _MOCK_SETTINGS):
-            with patch("api.admin_handlers._resolve_user_ids", side_effect=mock_resolve):
+            with patch(
+                "api.admin_handlers._resolve_user_ids", side_effect=mock_resolve
+            ):
                 app = _make_admin_app(include_broadcast=True)
                 app["bot"] = mock_bot
                 client: TestClient = await aiohttp_client(app)
@@ -807,7 +859,9 @@ class TestBroadcastButtonPreset:
         mock_bot.send_message = AsyncMock(return_value=None)
 
         with patch("api.admin_auth.settings", _MOCK_SETTINGS):
-            with patch("api.admin_handlers._resolve_user_ids", side_effect=mock_resolve):
+            with patch(
+                "api.admin_handlers._resolve_user_ids", side_effect=mock_resolve
+            ):
                 app = _make_admin_app(include_broadcast=True)
                 app["bot"] = mock_bot
                 client: TestClient = await aiohttp_client(app)
@@ -833,14 +887,20 @@ class TestBroadcastButtonPreset:
         mock_bot.send_message = AsyncMock(return_value=None)
 
         with patch("api.admin_auth.settings", _MOCK_SETTINGS):
-            with patch("api.admin_handlers._resolve_user_ids", side_effect=mock_resolve):
+            with patch(
+                "api.admin_handlers._resolve_user_ids", side_effect=mock_resolve
+            ):
                 app = _make_admin_app(include_broadcast=True)
                 app["bot"] = mock_bot
                 client: TestClient = await aiohttp_client(app)
 
                 resp = await client.post(
                     "/api/admin/broadcast",
-                    json={"category": 1, "message": "Test", "button_preset": "buy_single"},
+                    json={
+                        "category": 1,
+                        "message": "Test",
+                        "button_preset": "buy_single",
+                    },
                     headers={"X-Telegram-Init-Data": admin_init_data},
                 )
 
@@ -859,14 +919,20 @@ class TestBroadcastButtonPreset:
         mock_bot.send_message = AsyncMock(return_value=None)
 
         with patch("api.admin_auth.settings", _MOCK_SETTINGS):
-            with patch("api.admin_handlers._resolve_user_ids", side_effect=mock_resolve):
+            with patch(
+                "api.admin_handlers._resolve_user_ids", side_effect=mock_resolve
+            ):
                 app = _make_admin_app(include_broadcast=True)
                 app["bot"] = mock_bot
                 client: TestClient = await aiohttp_client(app)
 
                 resp = await client.post(
                     "/api/admin/broadcast",
-                    json={"category": 1, "message": "Test", "button_preset": "buy_packet"},
+                    json={
+                        "category": 1,
+                        "message": "Test",
+                        "button_preset": "buy_packet",
+                    },
                     headers={"X-Telegram-Init-Data": admin_init_data},
                 )
 
@@ -885,14 +951,20 @@ class TestBroadcastButtonPreset:
         mock_bot.send_message = AsyncMock(return_value=None)
 
         with patch("api.admin_auth.settings", _MOCK_SETTINGS):
-            with patch("api.admin_handlers._resolve_user_ids", side_effect=mock_resolve):
+            with patch(
+                "api.admin_handlers._resolve_user_ids", side_effect=mock_resolve
+            ):
                 app = _make_admin_app(include_broadcast=True)
                 app["bot"] = mock_bot
                 client: TestClient = await aiohttp_client(app)
 
                 resp = await client.post(
                     "/api/admin/broadcast",
-                    json={"category": 1, "message": "Test", "button_preset": "buy_packet_first"},
+                    json={
+                        "category": 1,
+                        "message": "Test",
+                        "button_preset": "buy_packet_first",
+                    },
                     headers={"X-Telegram-Init-Data": admin_init_data},
                 )
 
@@ -911,14 +983,20 @@ class TestBroadcastButtonPreset:
         mock_bot.send_message = AsyncMock(return_value=None)
 
         with patch("api.admin_auth.settings", _MOCK_SETTINGS):
-            with patch("api.admin_handlers._resolve_user_ids", side_effect=mock_resolve):
+            with patch(
+                "api.admin_handlers._resolve_user_ids", side_effect=mock_resolve
+            ):
                 app = _make_admin_app(include_broadcast=True)
                 app["bot"] = mock_bot
                 client: TestClient = await aiohttp_client(app)
 
                 resp = await client.post(
                     "/api/admin/broadcast",
-                    json={"category": 1, "message": "Test", "button_preset": "buy_packet_second"},
+                    json={
+                        "category": 1,
+                        "message": "Test",
+                        "button_preset": "buy_packet_second",
+                    },
                     headers={"X-Telegram-Init-Data": admin_init_data},
                 )
 
@@ -955,7 +1033,11 @@ class TestBroadcastButtonPreset:
             for invalid_value in [123, True, [], {}]:
                 resp = await client.post(
                     "/api/admin/broadcast",
-                    json={"category": 1, "message": "Test", "button_preset": invalid_value},
+                    json={
+                        "category": 1,
+                        "message": "Test",
+                        "button_preset": invalid_value,
+                    },
                     headers={"X-Telegram-Init-Data": admin_init_data},
                 )
 
@@ -972,8 +1054,14 @@ class TestBroadcastCallbackReuse:
             ButtonPreset.BALANCE: ("💰 Баланс", "balance"),
             ButtonPreset.BUY_SINGLE: ("📄 Купить 1 отчет", "buy:SINGLE"),
             ButtonPreset.BUY_PACKET: ("📦 Купить пакет", "buy:PACKET"),
-            ButtonPreset.BUY_PACKET_FIRST: ("📦 Купить первый пакет", "buy:PACKET_FIRST"),
-            ButtonPreset.BUY_PACKET_SECOND: ("📦 Купить второй пакет", "buy:PACKET_SECOND"),
+            ButtonPreset.BUY_PACKET_FIRST: (
+                "📦 Купить первый пакет",
+                "buy:PACKET_FIRST",
+            ),
+            ButtonPreset.BUY_PACKET_SECOND: (
+                "📦 Купить второй пакет",
+                "buy:PACKET_SECOND",
+            ),
         }
 
         text, callback_data = expected_mapping[ButtonPreset.BALANCE]
@@ -987,11 +1075,17 @@ class TestBroadcastCallbackReuse:
             ButtonPreset.BALANCE: ("💰 Баланс", "balance"),
             ButtonPreset.BUY_SINGLE: ("📄 Купить 1 отчет", "buy:SINGLE"),
             ButtonPreset.BUY_PACKET: ("📦 Купить пакет", "buy:PACKET"),
-            ButtonPreset.BUY_PACKET_FIRST: ("📦 Купить первый пакет", "buy:PACKET_FIRST"),
-            ButtonPreset.BUY_PACKET_SECOND: ("📦 Купить второй пакет", "buy:PACKET_SECOND"),
+            ButtonPreset.BUY_PACKET_FIRST: (
+                "📦 Купить первый пакет",
+                "buy:PACKET_FIRST",
+            ),
+            ButtonPreset.BUY_PACKET_SECOND: (
+                "📦 Купить второй пакет",
+                "buy:PACKET_SECOND",
+            ),
         }
 
-        text, callback_data = expected_mapping[ButtonPreset.BUY_SINGLE]
+        _, callback_data = expected_mapping[ButtonPreset.BUY_SINGLE]
         assert callback_data == "buy:SINGLE"
 
     def test_preset_to_callback_mapping_buy_packet(self) -> None:
@@ -1001,11 +1095,17 @@ class TestBroadcastCallbackReuse:
             ButtonPreset.BALANCE: ("💰 Баланс", "balance"),
             ButtonPreset.BUY_SINGLE: ("📄 Купить 1 отчет", "buy:SINGLE"),
             ButtonPreset.BUY_PACKET: ("📦 Купить пакет", "buy:PACKET"),
-            ButtonPreset.BUY_PACKET_FIRST: ("📦 Купить первый пакет", "buy:PACKET_FIRST"),
-            ButtonPreset.BUY_PACKET_SECOND: ("📦 Купить второй пакет", "buy:PACKET_SECOND"),
+            ButtonPreset.BUY_PACKET_FIRST: (
+                "📦 Купить первый пакет",
+                "buy:PACKET_FIRST",
+            ),
+            ButtonPreset.BUY_PACKET_SECOND: (
+                "📦 Купить второй пакет",
+                "buy:PACKET_SECOND",
+            ),
         }
 
-        text, callback_data = expected_mapping[ButtonPreset.BUY_PACKET]
+        _, callback_data = expected_mapping[ButtonPreset.BUY_PACKET]
         assert callback_data == "buy:PACKET"
 
     def test_preset_to_callback_mapping_buy_packet_first(self) -> None:
@@ -1015,11 +1115,17 @@ class TestBroadcastCallbackReuse:
             ButtonPreset.BALANCE: ("💰 Баланс", "balance"),
             ButtonPreset.BUY_SINGLE: ("📄 Купить 1 отчет", "buy:SINGLE"),
             ButtonPreset.BUY_PACKET: ("📦 Купить пакет", "buy:PACKET"),
-            ButtonPreset.BUY_PACKET_FIRST: ("📦 Купить первый пакет", "buy:PACKET_FIRST"),
-            ButtonPreset.BUY_PACKET_SECOND: ("📦 Купить второй пакет", "buy:PACKET_SECOND"),
+            ButtonPreset.BUY_PACKET_FIRST: (
+                "📦 Купить первый пакет",
+                "buy:PACKET_FIRST",
+            ),
+            ButtonPreset.BUY_PACKET_SECOND: (
+                "📦 Купить второй пакет",
+                "buy:PACKET_SECOND",
+            ),
         }
 
-        text, callback_data = expected_mapping[ButtonPreset.BUY_PACKET_FIRST]
+        _, callback_data = expected_mapping[ButtonPreset.BUY_PACKET_FIRST]
         assert callback_data == "buy:PACKET_FIRST"
 
     def test_preset_to_callback_mapping_buy_packet_second(self) -> None:
@@ -1029,26 +1135,38 @@ class TestBroadcastCallbackReuse:
             ButtonPreset.BALANCE: ("💰 Баланс", "balance"),
             ButtonPreset.BUY_SINGLE: ("📄 Купить 1 отчет", "buy:SINGLE"),
             ButtonPreset.BUY_PACKET: ("📦 Купить пакет", "buy:PACKET"),
-            ButtonPreset.BUY_PACKET_FIRST: ("📦 Купить первый пакет", "buy:PACKET_FIRST"),
-            ButtonPreset.BUY_PACKET_SECOND: ("📦 Купить второй пакет", "buy:PACKET_SECOND"),
+            ButtonPreset.BUY_PACKET_FIRST: (
+                "📦 Купить первый пакет",
+                "buy:PACKET_FIRST",
+            ),
+            ButtonPreset.BUY_PACKET_SECOND: (
+                "📦 Купить второй пакет",
+                "buy:PACKET_SECOND",
+            ),
         }
 
-        text, callback_data = expected_mapping[ButtonPreset.BUY_PACKET_SECOND]
+        _, callback_data = expected_mapping[ButtonPreset.BUY_PACKET_SECOND]
         assert callback_data == "buy:PACKET_SECOND"
 
     def test_callback_handlers_exist_in_bot(self) -> None:
         import os
+
         balance_handler_path = os.path.join(
             os.path.dirname(__file__), "..", "bot", "handlers", "balance.py"
         )
 
         assert os.path.exists(balance_handler_path)
 
-        with open(balance_handler_path, "r") as f:
+        with open(balance_handler_path, "r", encoding="utf-8") as f:
             content = f.read()
 
-        assert 'callback_data == "balance"' in content or 'F.data == "balance"' in content
-        assert 'callback_data.startswith("buy:")' in content or 'F.data.startswith("buy:")' in content
+        assert (
+            'callback_data == "balance"' in content or 'F.data == "balance"' in content
+        )
+        assert (
+            'callback_data.startswith("buy:")' in content
+            or 'F.data.startswith("buy:")' in content
+        )
 
     def test_build_broadcast_keyboard_implementation_matches_spec(self) -> None:
         import inspect
@@ -1062,11 +1180,11 @@ class TestBroadcastCallbackReuse:
         assert '"buy:PACKET_FIRST"' in source
         assert '"buy:PACKET_SECOND"' in source
 
-        assert 'ButtonPreset.BALANCE' in source
-        assert 'ButtonPreset.BUY_SINGLE' in source
-        assert 'ButtonPreset.BUY_PACKET' in source
-        assert 'ButtonPreset.BUY_PACKET_FIRST' in source
-        assert 'ButtonPreset.BUY_PACKET_SECOND' in source
+        assert "ButtonPreset.BALANCE" in source
+        assert "ButtonPreset.BUY_SINGLE" in source
+        assert "ButtonPreset.BUY_PACKET" in source
+        assert "ButtonPreset.BUY_PACKET_FIRST" in source
+        assert "ButtonPreset.BUY_PACKET_SECOND" in source
 
 
 # ---------------------------------------------------------------------------
@@ -1136,9 +1254,7 @@ class TestPricesListHandler:
         ]
 
         with patch("api.admin_auth.settings", _MOCK_SETTINGS):
-            with patch(
-                "api.admin_handlers.get_all_prices", return_value=mock_prices
-            ):
+            with patch("api.admin_handlers.get_all_prices", return_value=mock_prices):
                 app = _make_admin_app(include_prices=True)
                 client: TestClient = await aiohttp_client(app)
 
@@ -1214,9 +1330,7 @@ class TestPricesUpdateHandler:
         mock_bulk_upsert = AsyncMock(return_value=mock_updated_prices)
 
         with patch("api.admin_auth.settings", _MOCK_SETTINGS):
-            with patch(
-                "api.admin_handlers.bulk_upsert_prices", mock_bulk_upsert
-            ):
+            with patch("api.admin_handlers.bulk_upsert_prices", mock_bulk_upsert):
                 app = _make_admin_app(include_prices=True)
                 client: TestClient = await aiohttp_client(app)
 
@@ -1306,7 +1420,9 @@ class TestPricesUpdateValidation:
 
             resp = await client.post(
                 "/api/admin/prices",
-                json={"prices": [{"option": "SINGLE", "price": 100, "reports_amount": 1}]},
+                json={
+                    "prices": [{"option": "SINGLE", "price": 100, "reports_amount": 1}]
+                },
             )
 
         assert resp.status == 401
@@ -1324,7 +1440,9 @@ class TestPricesUpdateValidation:
 
             resp = await client.post(
                 "/api/admin/prices",
-                json={"prices": [{"option": "SINGLE", "price": 100, "reports_amount": 1}]},
+                json={
+                    "prices": [{"option": "SINGLE", "price": 100, "reports_amount": 1}]
+                },
                 headers={"X-Telegram-Init-Data": non_admin_init_data},
             )
 
@@ -1383,9 +1501,7 @@ class TestPricesUpdateValidation:
         mock_bulk_upsert = AsyncMock()
 
         with patch("api.admin_auth.settings", _MOCK_SETTINGS):
-            with patch(
-                "api.admin_handlers.bulk_upsert_prices", mock_bulk_upsert
-            ):
+            with patch("api.admin_handlers.bulk_upsert_prices", mock_bulk_upsert):
                 app = _make_admin_app(include_prices=True)
                 client: TestClient = await aiohttp_client(app)
 
@@ -1393,7 +1509,11 @@ class TestPricesUpdateValidation:
                     "/api/admin/prices",
                     json={
                         "prices": [
-                            {"option": "INVALID_OPTION", "price": 100, "reports_amount": 1}
+                            {
+                                "option": "INVALID_OPTION",
+                                "price": 100,
+                                "reports_amount": 1,
+                            }
                         ]
                     },
                     headers={"X-Telegram-Init-Data": admin_init_data},
@@ -1415,9 +1535,7 @@ class TestPricesUpdateValidation:
         mock_bulk_upsert = AsyncMock()
 
         with patch("api.admin_auth.settings", _MOCK_SETTINGS):
-            with patch(
-                "api.admin_handlers.bulk_upsert_prices", mock_bulk_upsert
-            ):
+            with patch("api.admin_handlers.bulk_upsert_prices", mock_bulk_upsert):
                 app = _make_admin_app(include_prices=True)
                 client: TestClient = await aiohttp_client(app)
 
@@ -1448,9 +1566,7 @@ class TestPricesUpdateValidation:
         mock_bulk_upsert = AsyncMock()
 
         with patch("api.admin_auth.settings", _MOCK_SETTINGS):
-            with patch(
-                "api.admin_handlers.bulk_upsert_prices", mock_bulk_upsert
-            ):
+            with patch("api.admin_handlers.bulk_upsert_prices", mock_bulk_upsert):
                 app = _make_admin_app(include_prices=True)
                 client: TestClient = await aiohttp_client(app)
 
@@ -1482,9 +1598,7 @@ class TestPricesUpdateValidation:
         mock_bulk_upsert = AsyncMock()
 
         with patch("api.admin_auth.settings", _MOCK_SETTINGS):
-            with patch(
-                "api.admin_handlers.bulk_upsert_prices", mock_bulk_upsert
-            ):
+            with patch("api.admin_handlers.bulk_upsert_prices", mock_bulk_upsert):
                 app = _make_admin_app(include_prices=True)
                 client: TestClient = await aiohttp_client(app)
 
@@ -1516,9 +1630,7 @@ class TestPricesUpdateValidation:
         mock_bulk_upsert = AsyncMock()
 
         with patch("api.admin_auth.settings", _MOCK_SETTINGS):
-            with patch(
-                "api.admin_handlers.bulk_upsert_prices", mock_bulk_upsert
-            ):
+            with patch("api.admin_handlers.bulk_upsert_prices", mock_bulk_upsert):
                 app = _make_admin_app(include_prices=True)
                 client: TestClient = await aiohttp_client(app)
 

@@ -136,7 +136,7 @@ UPGRADE_MAP: dict[str, str] = {
 
 
 @router.callback_query(F.data.startswith("buy:") | F.data.startswith("upgrade:"))
-async def buy_option_callback(callback: CallbackQuery, user: User, state: FSMContext):
+async def buy_option_callback(callback: CallbackQuery, user: User, state: FSMContext):  # pylint: disable=unused-argument
     """Unified handler for all buy and upgrade options"""
     prefix, option_key = callback.data.split(":", 1)
     is_upgrade = prefix == "upgrade"

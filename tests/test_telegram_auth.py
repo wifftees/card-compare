@@ -20,7 +20,7 @@ from api.telegram_auth import (
     verify_init_data,
 )
 
-BOT_TOKEN = "1234567890:ABCdefGHIjklMNOpqrsTUVwxyz"
+BOT_TOKEN = "1234567890:ABCdefGHIjklMNOpqrsTUVwxyz"  # nosec B105
 
 
 # ---------------------------------------------------------------------------
@@ -165,7 +165,7 @@ def _make_admin_app() -> web.Application:
     async def public_handler(_request: web.Request) -> web.Response:
         return web.json_response({"public": True})
 
-    app = web.Application(middlewares=[admin_auth_middleware])
+    app = web.Application(middlewares=[admin_auth_middleware])  # type: ignore[list-item]
     app.router.add_get("/api/admin/test", admin_handler)
     app.router.add_get("/health", public_handler)
     return app
@@ -237,9 +237,7 @@ class TestAdminAuthMiddleware:
         assert body == {"ok": True, "user_id": 111}
 
     @pytest.mark.asyncio
-    async def test_non_admin_path_passes_through(
-        self, aiohttp_client: Any
-    ) -> None:
+    async def test_non_admin_path_passes_through(self, aiohttp_client: Any) -> None:
         with patch("api.admin_auth.settings", _MOCK_SETTINGS):
             app = _make_admin_app()
             client: TestClient = await aiohttp_client(app)

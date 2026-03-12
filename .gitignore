@@ -39,3 +39,7 @@ logs/
 *.zip
 tmp/
 temp/
+.claude
+.pylintrc
+mypy.ini
+.bandit

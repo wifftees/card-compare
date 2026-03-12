@@ -6,6 +6,7 @@ disable=
     broad-exception-caught,
     consider-using-max-builtin,
     duplicate-code,
+    import-error,
     import-outside-toplevel,
     invalid-name,
     line-too-long,
@@ -14,12 +15,15 @@ disable=
     missing-function-docstring,
     missing-module-docstring,
     protected-access,
+    redefined-outer-name,
     too-few-public-methods,
     too-many-arguments,
     too-many-branches,
     too-many-instance-attributes,
+    too-many-lines,
     too-many-locals,
     too-many-positional-arguments,
     too-many-statements,
-    too-many-nested-blocks
+    too-many-nested-blocks,
+    wrong-import-position
 

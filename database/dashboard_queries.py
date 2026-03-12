@@ -64,11 +64,7 @@ def _fetch_all(build_query: Callable[[], Any]) -> list[dict[str, Any]]:
     rows: list[dict[str, Any]] = []
     offset = 0
     while True:
-        batch = (
-            build_query()
-            .range(offset, offset + _BATCH - 1)
-            .execute()
-        ).data or []
+        batch = (build_query().range(offset, offset + _BATCH - 1).execute()).data or []
         rows.extend(batch)
         if len(batch) < _BATCH:
             break
@@ -102,7 +98,7 @@ async def fetch_core_kpis(
     end_iso = _iso(range_end)
 
     # --- new_users ---
-    q = sb.table("users").select("id", count="exact")
+    q = sb.table("users").select("id", count="exact")  # type: ignore[arg-type]
     if range_start is not None:
         q = q.gte("created_at", _iso(range_start))
     q = q.lte("created_at", end_iso)
@@ -112,7 +108,7 @@ async def fetch_core_kpis(
     if range_start is not None:
         active_users: int = (
             sb.table("users")
-            .select("id", count="exact")
+            .select("id", count="exact")  # type: ignore[arg-type]
             .gte("last_active_at", _iso(range_start))
             .lte("last_active_at", end_iso)
             .execute()
@@ -125,7 +121,7 @@ async def fetch_core_kpis(
     # 1) GENERATED with updated_at IS NOT NULL and updated_at in range
     q1 = (
         sb.table("reports")
-        .select("id", count="exact")
+        .select("id", count="exact")  # type: ignore[arg-type]
         .eq("state", ReportState.GENERATED.value)
         .not_.is_("updated_at", "null")
     )
@@ -135,7 +131,7 @@ async def fetch_core_kpis(
     # 2) GENERATED with updated_at IS NULL and created_at in range
     q2 = (
         sb.table("reports")
-        .select("id", count="exact")
+        .select("id", count="exact")  # type: ignore[arg-type]
         .eq("state", ReportState.GENERATED.value)
         .is_("updated_at", "null")
     )
@@ -204,19 +200,13 @@ async def fetch_referral_metrics(
 
     # -- 1. All referred users (all-time) — needed for revenue attribution --
     all_referred = _fetch_all(
-        lambda: sb.table("users")
-        .select("id,invited_by")
-        .not_.is_("invited_by", "null")
+        lambda: sb.table("users").select("id,invited_by").not_.is_("invited_by", "null")
     )
     inviter_of: dict[int, int] = {r["id"]: r["invited_by"] for r in all_referred}
 
     # -- 2. Referred users created in range --
     def _build_range_referred() -> Any:
-        q = (
-            sb.table("users")
-            .select("id,invited_by")
-            .not_.is_("invited_by", "null")
-        )
+        q = sb.table("users").select("id,invited_by").not_.is_("invited_by", "null")
         return _apply_range(q, "created_at", range_start, range_end)
 
     range_referred = _fetch_all(_build_range_referred)
@@ -279,7 +269,9 @@ async def fetch_referral_metrics(
             paid_referred_in_range.add(uid)
 
     top_rev = sorted(
-        rev_by_inviter.items(), key=lambda x: x[1], reverse=True,
+        rev_by_inviter.items(),
+        key=lambda x: x[1],
+        reverse=True,
     )[:top_n]
 
     return ReferralMetrics(
@@ -317,9 +309,11 @@ async def fetch_repeat_reporters() -> RepeatReporters:
     sb = get_supabase()
 
     rows = _fetch_all(
-        lambda: sb.table("reports")
-        .select("user_id")
-        .eq("state", ReportState.GENERATED.value)
+        lambda: (
+            sb.table("reports")
+            .select("user_id")
+            .eq("state", ReportState.GENERATED.value)
+        )
     )
 
     reports_per_user: Counter[int] = Counter()
@@ -354,9 +348,11 @@ async def fetch_payer_segmentation(
     sb = get_supabase()
 
     rows = _fetch_all(
-        lambda: sb.table("payments")
-        .select("user_id,created_at")
-        .eq("status", PaymentStatus.SUCCESS.value)
+        lambda: (
+            sb.table("payments")
+            .select("user_id,created_at")
+            .eq("status", PaymentStatus.SUCCESS.value)
+        )
     )
 
     user_payments: defaultdict[int, list[datetime]] = defaultdict(list)
@@ -384,8 +380,8 @@ async def fetch_payer_segmentation(
         last = payments_sorted[-1]
 
         first_in_range = (
-            (range_start is None or first >= range_start) and first <= range_end
-        )
+            range_start is None or first >= range_start
+        ) and first <= range_end
 
         if first_in_range:
             new_payer += 1

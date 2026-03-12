@@ -85,9 +85,7 @@ class BotSettings(BaseSettings):
     def admin_miniapp_url(self) -> str:
         """Full URL for the admin Mini App, derived from ``public_base_url``."""
         if not self.public_base_url:
-            raise ValueError(
-                "PUBLIC_BASE_URL must be set to use the admin Mini App"
-            )
+            raise ValueError("PUBLIC_BASE_URL must be set to use the admin Mini App")
         return f"{self.public_base_url}/miniapp/admin"
 
 

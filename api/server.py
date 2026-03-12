@@ -70,7 +70,7 @@ def create_app(bot: Bot) -> web.Application:
     Returns:
         Configured aiohttp Application
     """
-    app = web.Application(middlewares=[admin_auth_middleware])
+    app = web.Application(middlewares=[admin_auth_middleware])  # type: ignore[list-item]
 
     app["bot"] = bot
 

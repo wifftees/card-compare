@@ -571,6 +571,24 @@ class Application:
                         logger.info("🔐 Checking authorization after restart...")
                         await self.wb_client._auth_service.ensure_authorized()
 
+                    # Verify browser is functional by checking compare page
+                    logger.info(
+                        "🔍 Verifying browser health: navigating to compare page..."
+                    )
+                    page = self.wb_client._page
+                    await page.goto(
+                        "https://seller.wildberries.ru/platform-analytics/cards-comparison",
+                        wait_until="domcontentloaded",
+                    )
+                    await page.wait_for_timeout(3000)
+                    try:
+                        await page.wait_for_load_state("networkidle", timeout=15000)
+                    except Exception:  # nosec B110
+                        pass
+                    btn = page.locator('[class^="Create-comparison-button"]').first
+                    await btn.wait_for(state="visible", timeout=15000)
+                    logger.info("✅ Compare button is visible — browser is healthy")
+
                     logger.info("✅ Browser restart completed successfully")
                 else:
                     logger.warning(

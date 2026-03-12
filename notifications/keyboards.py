@@ -39,4 +39,3 @@ CAMPAIGN_KEYBOARDS: dict[str, InlineKeyboardMarkup] = {
 def get_campaign_keyboard(campaign_id: str) -> InlineKeyboardMarkup | None:
     """Return an inline keyboard for a notification campaign, if configured."""
     return CAMPAIGN_KEYBOARDS.get(campaign_id)
-

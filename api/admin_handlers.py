@@ -58,7 +58,10 @@ def _build_broadcast_keyboard(preset: ButtonPreset) -> InlineKeyboardMarkup:
         ButtonPreset.BALANCE: ("💰 Купить", "balance"),
         ButtonPreset.BUY_SINGLE: ("📄 Купить 1 отчет", "buy:SINGLE"),
         ButtonPreset.BUY_PACKET: ("📦 Купить пакет", "buy:PACKET"),
-        ButtonPreset.BUY_PACKET_FIRST: ("📦 Купить МЕСЯЦ ПОД КОНТРОЛЕМ", "buy:PACKET_FIRST"),
+        ButtonPreset.BUY_PACKET_FIRST: (
+            "📦 Купить МЕСЯЦ ПОД КОНТРОЛЕМ",
+            "buy:PACKET_FIRST",
+        ),
         ButtonPreset.BUY_PACKET_SECOND: ("📦 Купить ПРОФЕССИОНАЛ", "buy:PACKET_SECOND"),
     }
     text, callback_data = preset_to_callback[preset]

@@ -21,7 +21,7 @@ import logging
 
 from aiohttp import web
 
-from api.telegram_auth import TelegramWebAppUser, extract_user, verify_init_data
+from api.telegram_auth import extract_user, verify_init_data
 from bot.config import settings
 
 logger = logging.getLogger(__name__)
@@ -37,7 +37,7 @@ async def admin_auth_middleware(
 ) -> web.StreamResponse:
     """Enforce Telegram WebApp auth + admin allowlist on admin routes."""
     if not request.path.startswith(_ADMIN_PATH_PREFIX):
-        return await handler(request)
+        return await handler(request)  # type: ignore[operator]
 
     raw_init_data = request.headers.get(_INIT_DATA_HEADER)
     if not raw_init_data:
@@ -61,4 +61,4 @@ async def admin_auth_middleware(
         return web.json_response({"error": "forbidden"}, status=403)
 
     request["tg_user"] = user
-    return await handler(request)
+    return await handler(request)  # type: ignore[operator]
