@@ -14,10 +14,12 @@ from datetime import datetime
 from typing import Optional
 
 from aiohttp import web
+from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
 from api.admin_models import (
     BroadcastRequest,
     BroadcastResponse,
+    ButtonPreset,
     ConversionGroup,
     ConversionStep,
     ConversionsRequest,
@@ -49,6 +51,20 @@ from database.queries import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+def _build_broadcast_keyboard(preset: ButtonPreset) -> InlineKeyboardMarkup:
+    preset_to_callback: dict[ButtonPreset, tuple[str, str]] = {
+        ButtonPreset.BALANCE: ("💰 Купить", "balance"),
+        ButtonPreset.BUY_SINGLE: ("📄 Купить 1 отчет", "buy:SINGLE"),
+        ButtonPreset.BUY_PACKET: ("📦 Купить пакет", "buy:PACKET"),
+        ButtonPreset.BUY_PACKET_FIRST: ("📦 Купить МЕСЯЦ ПОД КОНТРОЛЕМ", "buy:PACKET_FIRST"),
+        ButtonPreset.BUY_PACKET_SECOND: ("📦 Купить ПРОФЕССИОНАЛ", "buy:PACKET_SECOND"),
+    }
+    text, callback_data = preset_to_callback[preset]
+    return InlineKeyboardMarkup(
+        inline_keyboard=[[InlineKeyboardButton(text=text, callback_data=callback_data)]]
+    )
 
 
 async def _resolve_count(source: list[EventType] | Callable) -> int:
@@ -133,13 +149,13 @@ async def overview_handler(request: web.Request) -> web.Response:
 
     core_kpis = await fetch_core_kpis(range_start, range_end)
     logger.info("[ADMIN-API] core_kpis=%s", core_kpis.model_dump())
-    
+
     payments = await fetch_payment_metrics(range_start, range_end)
     logger.info("[ADMIN-API] payments=%s", payments.model_dump())
-    
+
     referrals = await fetch_referral_metrics(range_start, range_end)
     logger.info("[ADMIN-API] referrals=%s", referrals.model_dump())
-    
+
     repeat_reporters = await fetch_repeat_reporters()
     payer_segmentation = await fetch_payer_segmentation(range_start, range_end)
 
@@ -309,7 +325,7 @@ async def usernames_handler(request: web.Request) -> web.Response:
     category: Optional[int] = body.get("category") if isinstance(body, dict) else None
     if category is None or not isinstance(category, int):
         return web.json_response(
-            {"error": "\"category\" must be an int"},
+            {"error": '"category" must be an int'},
             status=400,
         )
 
@@ -331,26 +347,27 @@ async def usernames_handler(request: web.Request) -> web.Response:
     user_ids = await _resolve_user_ids(source)
 
     if not user_ids:
-        return web.json_response({
-            "category": category,
-            "label": label,
-            "total": 0,
-            "users": [],
-        })
+        return web.json_response(
+            {
+                "category": category,
+                "label": label,
+                "total": 0,
+                "users": [],
+            }
+        )
 
     usernames_map = await get_usernames_by_ids(user_ids)
 
-    users = [
-        {"user_id": uid, "username": usernames_map.get(uid)}
-        for uid in user_ids
-    ]
+    users = [{"user_id": uid, "username": usernames_map.get(uid)} for uid in user_ids]
 
-    return web.json_response({
-        "category": category,
-        "label": label,
-        "total": len(users),
-        "users": users,
-    })
+    return web.json_response(
+        {
+            "category": category,
+            "label": label,
+            "total": len(users),
+            "users": users,
+        }
+    )
 
 
 async def broadcast_handler(request: web.Request) -> web.Response:
@@ -402,11 +419,17 @@ async def broadcast_handler(request: web.Request) -> web.Response:
             status=500,
         )
 
+    reply_markup = (
+        _build_broadcast_keyboard(req.button_preset) if req.button_preset else None
+    )
+
     sent = 0
     failed = 0
     for uid in user_ids:
         try:
-            await bot.send_message(chat_id=uid, text=req.message)
+            await bot.send_message(
+                chat_id=uid, text=req.message, reply_markup=reply_markup
+            )
             sent += 1
         except Exception as e:
             logger.warning("[ADMIN-API] failed to send to %s: %s", uid, e)

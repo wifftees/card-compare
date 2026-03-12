@@ -19,6 +19,7 @@ from pydantic import BaseModel, Field
 # Range preset
 # ---------------------------------------------------------------------------
 
+
 class RangePreset(str, Enum):
     """Supported dashboard time-range presets."""
 
@@ -57,6 +58,7 @@ def compute_range(preset: RangePreset) -> tuple[Optional[datetime], datetime]:
 # ---------------------------------------------------------------------------
 # POST /api/admin/overview
 # ---------------------------------------------------------------------------
+
 
 class OverviewRequest(BaseModel):
     """Request body for ``POST /api/admin/overview``."""
@@ -154,6 +156,7 @@ class OverviewResponse(BaseModel):
 # POST /api/admin/conversions
 # ---------------------------------------------------------------------------
 
+
 class ConversionsRequest(BaseModel):
     """Request body for ``POST /api/admin/conversions``."""
 
@@ -193,16 +196,22 @@ class ConversionsResponse(BaseModel):
 # POST /api/admin/broadcast
 # ---------------------------------------------------------------------------
 
-class BroadcastRequest(BaseModel):
-    """Request body for ``POST /api/admin/broadcast``."""
 
+class ButtonPreset(str, Enum):
+    BALANCE = "balance"
+    BUY_SINGLE = "buy_single"
+    BUY_PACKET = "buy_packet"
+    BUY_PACKET_FIRST = "buy_packet_first"
+    BUY_PACKET_SECOND = "buy_packet_second"
+
+
+class BroadcastRequest(BaseModel):
     category: int
     message: str = Field(min_length=1)
+    button_preset: Optional[ButtonPreset] = None
 
 
 class BroadcastResponse(BaseModel):
-    """Response body for ``POST /api/admin/broadcast``."""
-
     sent: int
     failed: int
     total: int
@@ -211,6 +220,7 @@ class BroadcastResponse(BaseModel):
 # ---------------------------------------------------------------------------
 # GET /api/admin/prices
 # ---------------------------------------------------------------------------
+
 
 class PriceRow(BaseModel):
     """A single price configuration row."""
@@ -229,6 +239,7 @@ class PricesListResponse(BaseModel):
 # ---------------------------------------------------------------------------
 # POST /api/admin/prices
 # ---------------------------------------------------------------------------
+
 
 class PriceUpdateRow(BaseModel):
     """A single price row for bulk update."""

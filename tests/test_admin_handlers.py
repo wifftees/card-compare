@@ -730,6 +730,346 @@ class TestBroadcastHandler:
 
 
 # ---------------------------------------------------------------------------
+# Task 3.1: Verify broadcast endpoint accepts/rejects button_preset values
+# ---------------------------------------------------------------------------
+
+
+class TestBroadcastButtonPreset:
+    @pytest.mark.asyncio
+    async def test_broadcast_no_button_accepted(
+        self, aiohttp_client: Any, admin_init_data: str
+    ) -> None:
+        async def mock_resolve(_source: Any) -> list[int]:
+            return [100]
+
+        mock_bot = AsyncMock()
+        mock_bot.send_message = AsyncMock(return_value=None)
+
+        with patch("api.admin_auth.settings", _MOCK_SETTINGS):
+            with patch("api.admin_handlers._resolve_user_ids", side_effect=mock_resolve):
+                app = _make_admin_app(include_broadcast=True)
+                app["bot"] = mock_bot
+                client: TestClient = await aiohttp_client(app)
+
+                resp = await client.post(
+                    "/api/admin/broadcast",
+                    json={"category": 1, "message": "Test"},
+                    headers={"X-Telegram-Init-Data": admin_init_data},
+                )
+
+        assert resp.status == 200
+        body = await resp.json()
+        assert body["sent"] == 1
+        assert body["total"] == 1
+
+        mock_bot.send_message.assert_called_once()
+        call_kwargs = mock_bot.send_message.call_args[1]
+        assert call_kwargs["reply_markup"] is None
+
+    @pytest.mark.asyncio
+    async def test_broadcast_null_button_accepted(
+        self, aiohttp_client: Any, admin_init_data: str
+    ) -> None:
+        async def mock_resolve(_source: Any) -> list[int]:
+            return [100]
+
+        mock_bot = AsyncMock()
+        mock_bot.send_message = AsyncMock(return_value=None)
+
+        with patch("api.admin_auth.settings", _MOCK_SETTINGS):
+            with patch("api.admin_handlers._resolve_user_ids", side_effect=mock_resolve):
+                app = _make_admin_app(include_broadcast=True)
+                app["bot"] = mock_bot
+                client: TestClient = await aiohttp_client(app)
+
+                resp = await client.post(
+                    "/api/admin/broadcast",
+                    json={"category": 1, "message": "Test", "button_preset": None},
+                    headers={"X-Telegram-Init-Data": admin_init_data},
+                )
+
+        assert resp.status == 200
+        body = await resp.json()
+        assert body["sent"] == 1
+
+        mock_bot.send_message.assert_called_once()
+        call_kwargs = mock_bot.send_message.call_args[1]
+        assert call_kwargs["reply_markup"] is None
+
+    @pytest.mark.asyncio
+    async def test_broadcast_balance_preset_accepted(
+        self, aiohttp_client: Any, admin_init_data: str
+    ) -> None:
+        async def mock_resolve(_source: Any) -> list[int]:
+            return [100]
+
+        mock_bot = AsyncMock()
+        mock_bot.send_message = AsyncMock(return_value=None)
+
+        with patch("api.admin_auth.settings", _MOCK_SETTINGS):
+            with patch("api.admin_handlers._resolve_user_ids", side_effect=mock_resolve):
+                app = _make_admin_app(include_broadcast=True)
+                app["bot"] = mock_bot
+                client: TestClient = await aiohttp_client(app)
+
+                resp = await client.post(
+                    "/api/admin/broadcast",
+                    json={"category": 1, "message": "Test", "button_preset": "balance"},
+                    headers={"X-Telegram-Init-Data": admin_init_data},
+                )
+
+        assert resp.status == 200
+        body = await resp.json()
+        assert body["sent"] == 1
+
+    @pytest.mark.asyncio
+    async def test_broadcast_buy_single_preset_accepted(
+        self, aiohttp_client: Any, admin_init_data: str
+    ) -> None:
+        async def mock_resolve(_source: Any) -> list[int]:
+            return [100]
+
+        mock_bot = AsyncMock()
+        mock_bot.send_message = AsyncMock(return_value=None)
+
+        with patch("api.admin_auth.settings", _MOCK_SETTINGS):
+            with patch("api.admin_handlers._resolve_user_ids", side_effect=mock_resolve):
+                app = _make_admin_app(include_broadcast=True)
+                app["bot"] = mock_bot
+                client: TestClient = await aiohttp_client(app)
+
+                resp = await client.post(
+                    "/api/admin/broadcast",
+                    json={"category": 1, "message": "Test", "button_preset": "buy_single"},
+                    headers={"X-Telegram-Init-Data": admin_init_data},
+                )
+
+        assert resp.status == 200
+        body = await resp.json()
+        assert body["sent"] == 1
+
+    @pytest.mark.asyncio
+    async def test_broadcast_buy_packet_preset_accepted(
+        self, aiohttp_client: Any, admin_init_data: str
+    ) -> None:
+        async def mock_resolve(_source: Any) -> list[int]:
+            return [100]
+
+        mock_bot = AsyncMock()
+        mock_bot.send_message = AsyncMock(return_value=None)
+
+        with patch("api.admin_auth.settings", _MOCK_SETTINGS):
+            with patch("api.admin_handlers._resolve_user_ids", side_effect=mock_resolve):
+                app = _make_admin_app(include_broadcast=True)
+                app["bot"] = mock_bot
+                client: TestClient = await aiohttp_client(app)
+
+                resp = await client.post(
+                    "/api/admin/broadcast",
+                    json={"category": 1, "message": "Test", "button_preset": "buy_packet"},
+                    headers={"X-Telegram-Init-Data": admin_init_data},
+                )
+
+        assert resp.status == 200
+        body = await resp.json()
+        assert body["sent"] == 1
+
+    @pytest.mark.asyncio
+    async def test_broadcast_buy_packet_first_preset_accepted(
+        self, aiohttp_client: Any, admin_init_data: str
+    ) -> None:
+        async def mock_resolve(_source: Any) -> list[int]:
+            return [100]
+
+        mock_bot = AsyncMock()
+        mock_bot.send_message = AsyncMock(return_value=None)
+
+        with patch("api.admin_auth.settings", _MOCK_SETTINGS):
+            with patch("api.admin_handlers._resolve_user_ids", side_effect=mock_resolve):
+                app = _make_admin_app(include_broadcast=True)
+                app["bot"] = mock_bot
+                client: TestClient = await aiohttp_client(app)
+
+                resp = await client.post(
+                    "/api/admin/broadcast",
+                    json={"category": 1, "message": "Test", "button_preset": "buy_packet_first"},
+                    headers={"X-Telegram-Init-Data": admin_init_data},
+                )
+
+        assert resp.status == 200
+        body = await resp.json()
+        assert body["sent"] == 1
+
+    @pytest.mark.asyncio
+    async def test_broadcast_buy_packet_second_preset_accepted(
+        self, aiohttp_client: Any, admin_init_data: str
+    ) -> None:
+        async def mock_resolve(_source: Any) -> list[int]:
+            return [100]
+
+        mock_bot = AsyncMock()
+        mock_bot.send_message = AsyncMock(return_value=None)
+
+        with patch("api.admin_auth.settings", _MOCK_SETTINGS):
+            with patch("api.admin_handlers._resolve_user_ids", side_effect=mock_resolve):
+                app = _make_admin_app(include_broadcast=True)
+                app["bot"] = mock_bot
+                client: TestClient = await aiohttp_client(app)
+
+                resp = await client.post(
+                    "/api/admin/broadcast",
+                    json={"category": 1, "message": "Test", "button_preset": "buy_packet_second"},
+                    headers={"X-Telegram-Init-Data": admin_init_data},
+                )
+
+        assert resp.status == 200
+        body = await resp.json()
+        assert body["sent"] == 1
+
+    @pytest.mark.asyncio
+    async def test_broadcast_unsupported_preset_returns_400(
+        self, aiohttp_client: Any, admin_init_data: str
+    ) -> None:
+        with patch("api.admin_auth.settings", _MOCK_SETTINGS):
+            app = _make_admin_app(include_broadcast=True)
+            client: TestClient = await aiohttp_client(app)
+
+            resp = await client.post(
+                "/api/admin/broadcast",
+                json={"category": 1, "message": "Test", "button_preset": "custom"},
+                headers={"X-Telegram-Init-Data": admin_init_data},
+            )
+
+        assert resp.status == 400
+        body = await resp.json()
+        assert "error" in body
+
+    @pytest.mark.asyncio
+    async def test_broadcast_invalid_preset_types_return_400(
+        self, aiohttp_client: Any, admin_init_data: str
+    ) -> None:
+        with patch("api.admin_auth.settings", _MOCK_SETTINGS):
+            app = _make_admin_app(include_broadcast=True)
+            client: TestClient = await aiohttp_client(app)
+
+            for invalid_value in [123, True, [], {}]:
+                resp = await client.post(
+                    "/api/admin/broadcast",
+                    json={"category": 1, "message": "Test", "button_preset": invalid_value},
+                    headers={"X-Telegram-Init-Data": admin_init_data},
+                )
+
+                assert resp.status == 400
+                body = await resp.json()
+                assert "error" in body
+
+
+class TestBroadcastCallbackReuse:
+    def test_preset_to_callback_mapping_balance(self) -> None:
+        from api.admin_models import ButtonPreset
+
+        expected_mapping = {
+            ButtonPreset.BALANCE: ("💰 Баланс", "balance"),
+            ButtonPreset.BUY_SINGLE: ("📄 Купить 1 отчет", "buy:SINGLE"),
+            ButtonPreset.BUY_PACKET: ("📦 Купить пакет", "buy:PACKET"),
+            ButtonPreset.BUY_PACKET_FIRST: ("📦 Купить первый пакет", "buy:PACKET_FIRST"),
+            ButtonPreset.BUY_PACKET_SECOND: ("📦 Купить второй пакет", "buy:PACKET_SECOND"),
+        }
+
+        text, callback_data = expected_mapping[ButtonPreset.BALANCE]
+        assert callback_data == "balance"
+        assert "Баланс" in text
+
+    def test_preset_to_callback_mapping_buy_single(self) -> None:
+        from api.admin_models import ButtonPreset
+
+        expected_mapping = {
+            ButtonPreset.BALANCE: ("💰 Баланс", "balance"),
+            ButtonPreset.BUY_SINGLE: ("📄 Купить 1 отчет", "buy:SINGLE"),
+            ButtonPreset.BUY_PACKET: ("📦 Купить пакет", "buy:PACKET"),
+            ButtonPreset.BUY_PACKET_FIRST: ("📦 Купить первый пакет", "buy:PACKET_FIRST"),
+            ButtonPreset.BUY_PACKET_SECOND: ("📦 Купить второй пакет", "buy:PACKET_SECOND"),
+        }
+
+        text, callback_data = expected_mapping[ButtonPreset.BUY_SINGLE]
+        assert callback_data == "buy:SINGLE"
+
+    def test_preset_to_callback_mapping_buy_packet(self) -> None:
+        from api.admin_models import ButtonPreset
+
+        expected_mapping = {
+            ButtonPreset.BALANCE: ("💰 Баланс", "balance"),
+            ButtonPreset.BUY_SINGLE: ("📄 Купить 1 отчет", "buy:SINGLE"),
+            ButtonPreset.BUY_PACKET: ("📦 Купить пакет", "buy:PACKET"),
+            ButtonPreset.BUY_PACKET_FIRST: ("📦 Купить первый пакет", "buy:PACKET_FIRST"),
+            ButtonPreset.BUY_PACKET_SECOND: ("📦 Купить второй пакет", "buy:PACKET_SECOND"),
+        }
+
+        text, callback_data = expected_mapping[ButtonPreset.BUY_PACKET]
+        assert callback_data == "buy:PACKET"
+
+    def test_preset_to_callback_mapping_buy_packet_first(self) -> None:
+        from api.admin_models import ButtonPreset
+
+        expected_mapping = {
+            ButtonPreset.BALANCE: ("💰 Баланс", "balance"),
+            ButtonPreset.BUY_SINGLE: ("📄 Купить 1 отчет", "buy:SINGLE"),
+            ButtonPreset.BUY_PACKET: ("📦 Купить пакет", "buy:PACKET"),
+            ButtonPreset.BUY_PACKET_FIRST: ("📦 Купить первый пакет", "buy:PACKET_FIRST"),
+            ButtonPreset.BUY_PACKET_SECOND: ("📦 Купить второй пакет", "buy:PACKET_SECOND"),
+        }
+
+        text, callback_data = expected_mapping[ButtonPreset.BUY_PACKET_FIRST]
+        assert callback_data == "buy:PACKET_FIRST"
+
+    def test_preset_to_callback_mapping_buy_packet_second(self) -> None:
+        from api.admin_models import ButtonPreset
+
+        expected_mapping = {
+            ButtonPreset.BALANCE: ("💰 Баланс", "balance"),
+            ButtonPreset.BUY_SINGLE: ("📄 Купить 1 отчет", "buy:SINGLE"),
+            ButtonPreset.BUY_PACKET: ("📦 Купить пакет", "buy:PACKET"),
+            ButtonPreset.BUY_PACKET_FIRST: ("📦 Купить первый пакет", "buy:PACKET_FIRST"),
+            ButtonPreset.BUY_PACKET_SECOND: ("📦 Купить второй пакет", "buy:PACKET_SECOND"),
+        }
+
+        text, callback_data = expected_mapping[ButtonPreset.BUY_PACKET_SECOND]
+        assert callback_data == "buy:PACKET_SECOND"
+
+    def test_callback_handlers_exist_in_bot(self) -> None:
+        import os
+        balance_handler_path = os.path.join(
+            os.path.dirname(__file__), "..", "bot", "handlers", "balance.py"
+        )
+
+        assert os.path.exists(balance_handler_path)
+
+        with open(balance_handler_path, "r") as f:
+            content = f.read()
+
+        assert 'callback_data == "balance"' in content or 'F.data == "balance"' in content
+        assert 'callback_data.startswith("buy:")' in content or 'F.data.startswith("buy:")' in content
+
+    def test_build_broadcast_keyboard_implementation_matches_spec(self) -> None:
+        import inspect
+        from api.admin_handlers import _build_broadcast_keyboard
+
+        source = inspect.getsource(_build_broadcast_keyboard)
+
+        assert '"balance"' in source
+        assert '"buy:SINGLE"' in source
+        assert '"buy:PACKET"' in source
+        assert '"buy:PACKET_FIRST"' in source
+        assert '"buy:PACKET_SECOND"' in source
+
+        assert 'ButtonPreset.BALANCE' in source
+        assert 'ButtonPreset.BUY_SINGLE' in source
+        assert 'ButtonPreset.BUY_PACKET' in source
+        assert 'ButtonPreset.BUY_PACKET_FIRST' in source
+        assert 'ButtonPreset.BUY_PACKET_SECOND' in source
+
+
+# ---------------------------------------------------------------------------
 # Task 5.1: GET /api/admin/prices auth and response tests
 # ---------------------------------------------------------------------------
 

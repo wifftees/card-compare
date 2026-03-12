@@ -26,9 +26,9 @@ context: |
   ## Directory structure (high-level)
   - `main.py`: app entrypoint, background tasks, starts bot polling + webhook server
   - `api/`: aiohttp webhook server (`api/server.py`)
-    - `api/admin_handlers.py`: Admin API handlers (overview, conversions, usernames, broadcast)
-    - `api/admin_models.py`: Pydantic models for admin endpoints
-    - `api/miniapp.py`: Admin Mini App HTML (inline single-page app)
+    - `api/admin_handlers.py`: Admin API handlers (overview, conversions, usernames, broadcast with optional inline button presets)
+    - `api/admin_models.py`: Pydantic models for admin endpoints (broadcast request includes optional `button_preset`)
+    - `api/miniapp.py`: Admin Mini App HTML (inline single-page app with Broadcast tab CTA selector)
   - `bot/`: aiogram configuration, routers, FSM states, middlewares, queue, UI helpers
     - `bot/handlers/`: Telegram command/callback handlers (user flows + admin)
     - `bot/broadcast_groups.py`: Legacy broadcast group definitions (no_activity, used_trial, bought_single)
@@ -125,6 +125,9 @@ context: |
   - `POST /api/admin/broadcast`
     - Admin-only (Telegram WebApp initData via `X-Telegram-Init-Data`)
     - Sends broadcast message to users in a conversion category
+    - Request body: `category` (int), `message` (string), `button_preset` (optional string: balance, buy_single, buy_packet, buy_packet_first, buy_packet_second)
+    - Maps presets to inline keyboard buttons with existing callback flows
+    - Response: `sent`, `failed`, `total` counts
   - `GET /api/admin/prices`
     - Admin-only (Telegram WebApp initData via `X-Telegram-Init-Data`)
     - Lists rows from `prices` table (`option`, `price`, `reports_amount`)
@@ -133,7 +136,8 @@ context: |
     - Bulk updates rows in `prices` table (`option`, `price`, `reports_amount`)
   - `GET /miniapp/admin`
     - Admin Mini App HTML entrypoint (served by embedded aiohttp app)
-    - Four tabs: Обзор (Overview), Конверсии (Conversions), Рассылка (Broadcast), Цены (Prices)
+    - Four tabs: Обзор (Overview), Конверсии (Conversions), Рассылка (Broadcast with CTA selector), Цены (Prices)
+    - Broadcast tab includes category selector, message input, CTA selector (none/balance/buy_single/buy_packet/buy_packet_first/buy_packet_second)
   - `GET /health`
     - `api.server.health_check_handler`
 

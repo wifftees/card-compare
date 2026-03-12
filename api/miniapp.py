@@ -333,6 +333,15 @@ body {
         <sl-select id="broadcast-category-select" placeholder="Выберите категорию..." value="" style="width: 100%; margin-bottom: 12px;"></sl-select>
         <label>Текст сообщения:</label>
         <sl-textarea id="broadcast-message" placeholder="Введите сообщение для рассылки..." rows="5" style="width: 100%; margin-bottom: 12px;"></sl-textarea>
+        <label>Выберите кнопку призыва к действию:</label>
+        <sl-select id="broadcast-cta-select" placeholder="Без кнопки" value="" style="width: 100%; margin-bottom: 12px;">
+          <sl-option value="">Без кнопки</sl-option>
+          <sl-option value="balance">Баланс</sl-option>
+          <sl-option value="buy_single">Купить 1 отчет</sl-option>
+          <sl-option value="buy_packet">Купить пакет</sl-option>
+          <sl-option value="buy_packet_first">Купить МЕСЯЦ ПОД КОНТРОЛЕМ</sl-option>
+          <sl-option value="buy_packet_second">Купить ПРОФЕССИОНАЛ</sl-option>
+        </sl-select>
         <sl-button id="broadcast-send-btn" variant="primary" size="medium">
           <sl-icon slot="prefix" name="send"></sl-icon>
           Отправить
@@ -814,8 +823,10 @@ body {
   document.getElementById("broadcast-send-btn").addEventListener("click", function () {
     var categorySelect = document.getElementById("broadcast-category-select");
     var messageInput = document.getElementById("broadcast-message");
+    var ctaSelect = document.getElementById("broadcast-cta-select");
     var categoryVal = categorySelect.value;
     var messageVal = (messageInput.value || "").trim();
+    var ctaVal = ctaSelect.value;
     if (!categoryVal) {
       showError("Выберите категорию.");
       return;
@@ -825,10 +836,14 @@ body {
       return;
     }
     var categoryNum = parseInt(categoryVal, 10);
+    var payload = { category: categoryNum, message: messageVal };
+    if (ctaVal) {
+      payload.button_preset = ctaVal;
+    }
     var btn = document.getElementById("broadcast-send-btn");
     btn.loading = true;
     document.getElementById("broadcast-result").style.display = "none";
-    adminFetch("/api/admin/broadcast", "POST", { category: categoryNum, message: messageVal })
+    adminFetch("/api/admin/broadcast", "POST", payload)
       .then(function (data) {
         var resultDiv = document.getElementById("broadcast-result");
         resultDiv.textContent = "Рассылка завершена. Отправлено: " + data.sent + ", Ошибок: " + data.failed;
