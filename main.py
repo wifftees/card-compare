@@ -641,6 +641,9 @@ class Application:
         # Setup components
         await self.setup()
 
+        polling_retry_delay = 5
+        max_polling_retry_delay = 60
+
         # Start queue worker
         logger.info("🚀 Starting queue worker...")
         self.worker_task = asyncio.create_task(self.queue_worker())
@@ -683,8 +686,25 @@ class Application:
         # Start bot polling
         logger.info("🎯 Starting bot polling...")
         try:
-            # Skip pending updates to only process new ones
-            await self.dp.start_polling(self.bot, skip_updates=True)
+            while True:
+                try:
+                    # Skip pending updates to only process new ones
+                    await self.dp.start_polling(self.bot, skip_updates=True)
+                    break
+                except TelegramNetworkError as e:
+                    if self._shutdown:
+                        raise
+
+                    logger.error(
+                        "🌐 Telegram polling network error: %s. Retrying in %ss...",
+                        e,
+                        polling_retry_delay,
+                        exc_info=True,
+                    )
+                    await asyncio.sleep(polling_retry_delay)
+                    polling_retry_delay = min(
+                        polling_retry_delay * 2, max_polling_retry_delay
+                    )
         finally:
             await self.shutdown()
 
@@ -787,21 +807,9 @@ async def main():
     # Setup logging
     setup_logging()
 
-    retry_delay = 5
-    max_retry_delay = 60
-
-    while True:
-        app = Application()
-        try:
-            await app.start()
-            return
-        except TelegramNetworkError as e:
-            logger.error(
-                f"🌐 Telegram network error: {e}. Restarting in {retry_delay}s...",
-                exc_info=True,
-            )
-            await asyncio.sleep(retry_delay)
-            retry_delay = min(retry_delay * 2, max_retry_delay)
+    # Create and start application
+    app = Application()
+    await app.start()
 
 
 if __name__ == "__main__":
