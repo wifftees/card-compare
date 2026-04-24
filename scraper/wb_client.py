@@ -1,7 +1,13 @@
 """Wildberries Playwright client"""
 
 import logging
-from playwright.async_api import async_playwright, Browser, BrowserContext, Page
+from playwright.async_api import (
+    Error as PlaywrightError,
+    async_playwright,
+    Browser,
+    BrowserContext,
+    Page,
+)
 
 from bot.utils.status import update_status_message
 from database.queries import get_compare_cards_mock
@@ -42,6 +48,97 @@ class WBClient:
     async def __aexit__(self, exc_type, exc_val, exc_tb):
         """Async context manager exit"""
         await self.disconnect()
+
+    def _bind_services(self, page: Page) -> None:
+        """Bind services to the current Playwright page."""
+        self._page = page
+        self._page.on("close", lambda: logger.warning("⚠️  Page closed!"))
+        self._auth_service = WBAuthService(
+            self._page,
+            self._context,
+            self._config,
+            self._state_storage,
+            bot=self._bot,
+            admin_id=self._admin_id,
+        )
+        self._scraper_service = WBScraperService(
+            self._page, self._config.downloads_path
+        )
+
+    def _has_live_page(self) -> bool:
+        """Return True when the current page can still be used."""
+        return self._page is not None and not self._page.is_closed()
+
+    def _has_live_browser(self) -> bool:
+        """Return True when the current browser connection is still alive."""
+        return self._browser is not None and self._browser.is_connected()
+
+    async def _open_page(self) -> Page:
+        """Open a fresh page inside the current browser context."""
+        if not self._context:
+            raise RuntimeError("Browser context not initialized")
+
+        page = await self._context.new_page()
+        self._bind_services(page)
+        await self._verify_locale()
+        return page
+
+    async def ensure_page(self, *, force_recreate: bool = False) -> Page:
+        """Restore the Playwright page if it was closed unexpectedly."""
+        if not force_recreate and self._has_live_page():
+            if not self._auth_service or not self._scraper_service:
+                logger.warning("⚠️  Browser services missing, rebinding current page")
+                self._bind_services(self._page)
+            return self._page
+
+        logger.warning("⚠️  Browser page is unavailable, restoring it...")
+
+        if force_recreate and self._has_live_page():
+            try:
+                await self._page.close()
+            except PlaywrightError as e:
+                logger.warning(f"⚠️  Could not close stale page cleanly: {e}")
+
+        if self._has_live_browser() and self._context is not None:
+            try:
+                page = await self._open_page()
+                logger.info("✅ Browser page restored in existing context")
+                return page
+            except PlaywrightError as e:
+                logger.warning(
+                    f"⚠️  Could not restore page in current context: {e}"
+                )
+
+        logger.info("🔄 Reconnecting browser runtime from scratch...")
+        await self.disconnect()
+        await self.connect()
+        if not self._page:
+            raise RuntimeError("Failed to restore browser page")
+        return self._page
+
+    async def ensure_authorized(self) -> None:
+        """Ensure the browser is alive and authenticated before scraping."""
+        last_error: Exception | None = None
+
+        for attempt in range(2):
+            await self.ensure_page(force_recreate=attempt > 0)
+            if not self._auth_service:
+                raise RuntimeError("Auth service is not initialized")
+
+            try:
+                await self._auth_service.ensure_authorized()
+                return
+            except PlaywrightError as e:
+                error_text = str(e).lower()
+                if "target page" not in error_text and "has been closed" not in error_text:
+                    raise
+
+                last_error = e
+                logger.warning(
+                    "⚠️  Browser page closed during authorization, retrying..."
+                )
+
+        raise RuntimeError("Failed to restore browser page for authorization") from last_error
 
     async def connect(self):
         """Initialize browser and connect"""
@@ -87,26 +184,7 @@ class WBClient:
             )
             self._context = await self._browser.new_context(**context_options)
 
-        self._page = await self._context.new_page()
-
-        # Add page close handler for debugging
-        self._page.on("close", lambda: logger.warning("⚠️  Page closed!"))
-
-        # Verify browser locale
-        await self._verify_locale()
-
-        # Initialize services
-        self._auth_service = WBAuthService(
-            self._page,
-            self._context,
-            self._config,
-            self._state_storage,
-            bot=self._bot,
-            admin_id=self._admin_id,
-        )
-        self._scraper_service = WBScraperService(
-            self._page, self._config.downloads_path
-        )
+        await self._open_page()
 
         # IMPORTANT: Do NOT call ensure_authorized() here!
         # It must be called AFTER bot polling starts to avoid deadlock.
@@ -117,10 +195,26 @@ class WBClient:
 
     async def disconnect(self):
         """Close browser"""
-        if self._browser:
-            await self._browser.close()
-        if self._playwright:
-            await self._playwright.stop()
+        try:
+            if self._browser and self._browser.is_connected():
+                await self._browser.close()
+        except PlaywrightError as e:
+            logger.warning(f"⚠️  Error while closing browser: {e}")
+        finally:
+            self._browser = None
+            self._context = None
+            self._page = None
+            self._auth_service = None
+            self._scraper_service = None
+
+        try:
+            if self._playwright:
+                await self._playwright.stop()
+        except PlaywrightError as e:
+            logger.warning(f"⚠️  Error while stopping Playwright: {e}")
+        finally:
+            self._playwright = None
+
         logger.info("⏸️  Browser closed")
 
     async def _verify_locale(self):
@@ -175,6 +269,9 @@ class WBClient:
             return await self._scraper_service.fake_compare_cards(
                 articles, on_status=on_status
             )
+        await self.ensure_authorized()
+        if not self._scraper_service:
+            raise RuntimeError("Scraper service is not initialized")
         return await self._scraper_service.compare_cards(articles, on_status=on_status)
 
     async def process_filters(

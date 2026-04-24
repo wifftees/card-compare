@@ -462,8 +462,8 @@ class Application:
             await asyncio.sleep(2)
 
             logger.info("🔐 Checking Wildberries authorization...")
-            if self.wb_client and self.wb_client._auth_service:
-                await self.wb_client._auth_service.ensure_authorized()
+            if self.wb_client:
+                await self.wb_client.ensure_authorized()
                 logger.info("✅ Wildberries authorization check complete")
             else:
                 logger.warning("⚠️ WB client not initialized")
@@ -567,15 +567,14 @@ class Application:
                     await self.wb_client.connect()
 
                     # Check authorization
-                    if self.wb_client._auth_service:
-                        logger.info("🔐 Checking authorization after restart...")
-                        await self.wb_client._auth_service.ensure_authorized()
+                    logger.info("🔐 Checking authorization after restart...")
+                    await self.wb_client.ensure_authorized()
 
                     # Verify browser is functional by checking compare page
                     logger.info(
                         "🔍 Verifying browser health: navigating to compare page..."
                     )
-                    page = self.wb_client._page
+                    page = await self.wb_client.ensure_page()
                     await page.goto(
                         "https://seller.wildberries.ru/platform-analytics/cards-comparison",
                         wait_until="domcontentloaded",
