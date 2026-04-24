@@ -7,6 +7,7 @@ from pathlib import Path
 
 from aiogram import Bot, Dispatcher
 from aiogram.client.default import DefaultBotProperties
+from aiogram.exceptions import TelegramNetworkError
 from aiogram.fsm.storage.memory import MemoryStorage
 from aiogram.types import FSInputFile, InlineKeyboardMarkup, InlineKeyboardButton
 
@@ -786,9 +787,21 @@ async def main():
     # Setup logging
     setup_logging()
 
-    # Create and start application
-    app = Application()
-    await app.start()
+    retry_delay = 5
+    max_retry_delay = 60
+
+    while True:
+        app = Application()
+        try:
+            await app.start()
+            return
+        except TelegramNetworkError as e:
+            logger.error(
+                f"🌐 Telegram network error: {e}. Restarting in {retry_delay}s...",
+                exc_info=True,
+            )
+            await asyncio.sleep(retry_delay)
+            retry_delay = min(retry_delay * 2, max_retry_delay)
 
 
 if __name__ == "__main__":
