@@ -30,6 +30,10 @@ services:
     volumes:
       - ./storage:/app/storage
       - ./logs:/app/logs
+
+    # Work around provider routing issues to Telegram Bot API.
+    extra_hosts:
+      - "api.telegram.org:149.154.167.220"
     
     # Ограничения ресурсов (критично для Playwright)
     deploy:
