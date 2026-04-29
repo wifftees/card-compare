@@ -2,6 +2,7 @@
 
 import os
 import logging
+import re
 import shutil
 import zipfile
 from typing import Callable, Awaitable
@@ -12,6 +13,37 @@ logger = logging.getLogger(__name__)
 
 # Callback type: accepts a stage number, returns True if update succeeded
 StatusCallback = Callable[[int], Awaitable[bool]]
+CREATE_EXCEL_BUTTON_RE = re.compile(r"создать\s*excel", re.IGNORECASE)
+CREATE_EXCEL_CONFIRM_RE = re.compile(r"сформировать", re.IGNORECASE)
+DOWNLOADS_LIST_WRAPPER_CLASS = "Download-manager-wrapper__c9zElMZyrE"
+DOWNLOADS_LIST_BUTTON_SELECTOR = (
+    f"div.{DOWNLOADS_LIST_WRAPPER_CLASS} > div > span > button"
+)
+DOWNLOADS_LIST_BUTTON_FALLBACK_SELECTOR = (
+    'div[class^="Download-manager-wrapper__"] > div > span > button'
+)
+DOWNLOADS_LIST_REPORTS_SETTLE_TIMEOUT_MS = 15000
+
+
+def _short_log_value(value: object, limit: int = 240) -> str:
+    """Compact noisy DOM strings before writing them into app logs."""
+    if value is None:
+        return ""
+
+    text = " ".join(str(value).split())
+    if len(text) <= limit:
+        return text
+    return f"{text[: limit - 3]}..."
+
+
+def _format_box(box: dict | None) -> str:
+    if not box:
+        return "None"
+
+    return (
+        f"x={box.get('x', 0):.1f}, y={box.get('y', 0):.1f}, "
+        f"w={box.get('width', 0):.1f}, h={box.get('height', 0):.1f}"
+    )
 
 
 async def _notify(on_status: StatusCallback | None, stage: int) -> None:
@@ -51,6 +83,370 @@ class WBScraperService:
     def __init__(self, page: Page, downloads_path: str):
         self._page = page
         self._downloads_path = downloads_path
+
+    async def _log_locator_candidate(
+        self,
+        label: str,
+        locator,
+        *,
+        prefix: str = "    ",
+        limit: int = 3,
+    ) -> None:
+        """Log bounded details for a Playwright locator candidate."""
+        try:
+            count = await locator.count()
+            logger.info(f"{prefix}🔎 {label}: count={count}")
+
+            for index in range(min(count, limit)):
+                item = locator.nth(index)
+
+                try:
+                    text = await item.inner_text(timeout=1500)
+                except Exception as e:
+                    text = f"<inner_text error: {e}>"
+
+                try:
+                    class_name = await item.get_attribute("class", timeout=1500)
+                except Exception as e:
+                    class_name = f"<class error: {e}>"
+
+                try:
+                    test_id = await item.get_attribute("data-testid", timeout=1500)
+                except Exception as e:
+                    test_id = f"<data-testid error: {e}>"
+
+                try:
+                    visible = await item.is_visible(timeout=1500)
+                except Exception as e:
+                    visible = f"<visible error: {e}>"
+
+                try:
+                    enabled = await item.is_enabled(timeout=1500)
+                except Exception as e:
+                    enabled = f"<enabled error: {e}>"
+
+                try:
+                    editable = await item.is_editable(timeout=1500)
+                except Exception as e:
+                    editable = f"<editable error: {e}>"
+
+                try:
+                    box = await item.bounding_box(timeout=1500)
+                except Exception as e:
+                    box = None
+                    logger.info(f"{prefix}   [{index}] bounding_box error: {e}")
+
+                logger.info(
+                    f"{prefix}   [{index}] visible={visible} enabled={enabled} "
+                    f"editable={editable} box=({_format_box(box)}) "
+                    f'data-testid="{_short_log_value(test_id)}" '
+                    f'text="{_short_log_value(text)}" class="{_short_log_value(class_name)}"'
+                )
+        except Exception as e:
+            logger.warning(f"{prefix}⚠️  Could not log locator {label}: {e}")
+
+    async def _log_create_excel_dom_snapshot(self, prefix: str = "    ") -> None:
+        """Log DOM state around the Download manager and Excel buttons."""
+        try:
+            snapshot = await self._page.evaluate(
+                """() => {
+                    const clean = (value) => String(value || '').replace(/\\s+/g, ' ').trim();
+                    const rectOf = (element) => {
+                        const rect = element.getBoundingClientRect();
+                        return {
+                            x: rect.x,
+                            y: rect.y,
+                            width: rect.width,
+                            height: rect.height,
+                        };
+                    };
+                    const summarizeButton = (button, index) => {
+                        const style = window.getComputedStyle(button);
+                        const manager = button.closest('[class*="Download-manager"]');
+                        return {
+                            index,
+                            text: clean(button.innerText || button.textContent),
+                            className: clean(button.getAttribute('class')),
+                            testId: button.getAttribute('data-testid') || '',
+                            ariaLabel: button.getAttribute('aria-label') || '',
+                            disabled: Boolean(button.disabled || button.getAttribute('aria-disabled') === 'true'),
+                            display: style.display,
+                            visibility: style.visibility,
+                            pointerEvents: style.pointerEvents,
+                            rect: rectOf(button),
+                            managerClass: clean(manager && manager.getAttribute('class')),
+                        };
+                    };
+
+                    const managers = Array.from(
+                        document.querySelectorAll('[class*="Download-manager"]')
+                    ).slice(0, 5).map((manager, index) => ({
+                        index,
+                        className: clean(manager.getAttribute('class')),
+                        text: clean(manager.innerText || manager.textContent).slice(0, 300),
+                        rect: rectOf(manager),
+                        buttons: Array.from(manager.querySelectorAll('button'))
+                            .slice(0, 5)
+                            .map(summarizeButton),
+                    }));
+
+                    const relevantButtons = Array.from(document.querySelectorAll('button'))
+                        .map(summarizeButton)
+                        .filter((button) => (
+                            /excel|создать/i.test(button.text)
+                            || button.managerClass
+                            || /Download-manager/.test(button.className)
+                            || /Download-manager/.test(button.testId)
+                        ))
+                        .slice(0, 20);
+
+                    return {
+                        url: location.href,
+                        title: document.title,
+                        managerCount: document.querySelectorAll('[class*="Download-manager"]').length,
+                        oldPrefixManagerCount: document.querySelectorAll('div[class^="Download-manager"]').length,
+                        totalButtonCount: document.querySelectorAll('button').length,
+                        managers,
+                        relevantButtons,
+                    };
+                }"""
+            )
+
+            logger.info(
+                f'{prefix}📍 Create Excel DOM: url="{_short_log_value(snapshot.get("url"))}" '
+                f'title="{_short_log_value(snapshot.get("title"))}"'
+            )
+            logger.info(
+                f"{prefix}📊 Create Excel DOM: "
+                f"managers(class*=Download-manager)={snapshot.get('managerCount')} "
+                f"old_prefix_managers(class^=Download-manager)={snapshot.get('oldPrefixManagerCount')} "
+                f"total_buttons={snapshot.get('totalButtonCount')} "
+                f"relevant_buttons={len(snapshot.get('relevantButtons', []))}"
+            )
+
+            for manager in snapshot.get("managers", []):
+                logger.info(
+                    f'{prefix}   manager[{manager.get("index")}] '
+                    f'box=({_format_box(manager.get("rect"))}) '
+                    f'class="{_short_log_value(manager.get("className"))}" '
+                    f'text="{_short_log_value(manager.get("text"))}" '
+                    f'buttons={len(manager.get("buttons", []))}'
+                )
+                for button in manager.get("buttons", []):
+                    logger.info(
+                        f'{prefix}      button[{button.get("index")}] '
+                        f'disabled={button.get("disabled")} '
+                        f'display={button.get("display")} '
+                        f'visibility={button.get("visibility")} '
+                        f'pointer-events={button.get("pointerEvents")} '
+                        f'box=({_format_box(button.get("rect"))}) '
+                        f'data-testid="{_short_log_value(button.get("testId"))}" '
+                        f'text="{_short_log_value(button.get("text"))}" '
+                        f'class="{_short_log_value(button.get("className"))}"'
+                    )
+
+            for button in snapshot.get("relevantButtons", []):
+                logger.info(
+                    f'{prefix}   relevant_button[{button.get("index")}] '
+                    f'disabled={button.get("disabled")} '
+                    f'display={button.get("display")} '
+                    f'visibility={button.get("visibility")} '
+                    f'pointer-events={button.get("pointerEvents")} '
+                    f'box=({_format_box(button.get("rect"))}) '
+                    f'data-testid="{_short_log_value(button.get("testId"))}" '
+                    f'text="{_short_log_value(button.get("text"))}" '
+                    f'class="{_short_log_value(button.get("className"))}" '
+                    f'manager_class="{_short_log_value(button.get("managerClass"))}"'
+                )
+        except Exception as e:
+            logger.warning(
+                f"{prefix}⚠️  Could not collect Create Excel DOM snapshot: {e}"
+            )
+
+    async def _find_create_excel_button(self):
+        """Find the Download manager button that opens the Excel creation modal."""
+        logger.info("    💾 Looking for Create Excel button...")
+        await self._log_create_excel_dom_snapshot()
+
+        candidates = [
+            (
+                "direct button in root Download-manager__ container",
+                self._page.locator(
+                    'div[class*="Download-manager__"] > div > span > button'
+                ),
+            ),
+            (
+                'Download manager button with text "Создать excel"',
+                self._page.locator('[class*="Download-manager"] button').filter(
+                    has_text=CREATE_EXCEL_BUTTON_RE
+                ),
+            ),
+            (
+                "legacy data-testid Download-manager-open-modal-button-interface",
+                self._page.get_by_test_id(
+                    "Download-manager-open-modal-button-interface"
+                ),
+            ),
+            (
+                'any button in root [class*="Download-manager__"]',
+                self._page.locator('div[class*="Download-manager__"] button'),
+            ),
+            (
+                'any button in [class*="Download-manager"]',
+                self._page.locator('[class*="Download-manager"] button'),
+            ),
+            (
+                'global role button named "Создать excel"',
+                self._page.get_by_role("button", name=CREATE_EXCEL_BUTTON_RE),
+            ),
+            (
+                'old selector div[class^="Download-manager"] button',
+                self._page.locator('div[class^="Download-manager"] button'),
+            ),
+        ]
+
+        for label, locator in candidates:
+            await self._log_locator_candidate(label, locator)
+
+        for label, locator in candidates:
+            count = await locator.count()
+            if count == 0:
+                continue
+
+            for index in range(min(count, 5)):
+                candidate = locator.nth(index)
+                try:
+                    await candidate.wait_for(state="visible", timeout=2000)
+                    enabled = await candidate.is_enabled(timeout=1500)
+                except Exception as e:
+                    logger.info(
+                        f"    ⏭️  Skipping candidate {label}[{index}]: not visible/ready ({e})"
+                    )
+                    continue
+
+                if not enabled:
+                    logger.info(
+                        f"    ⏭️  Skipping candidate {label}[{index}]: visible but disabled"
+                    )
+                    continue
+
+                logger.info(f"    ✅ Selected Create Excel button: {label}[{index}]")
+                return candidate
+
+        raise PlaywrightTimeoutError(
+            'Create Excel button was not found. Expected text: "Создать excel", '
+            'container selector: [class*="Download-manager"].'
+        )
+
+    async def _find_downloads_list_button(self):
+        """Find the Download manager button that opens created files list."""
+        logger.info("🔍 Looking for downloads list button...")
+        await self._log_create_excel_dom_snapshot(prefix="")
+
+        candidates = [
+            (
+                "exact Download-manager-wrapper direct button",
+                self._page.locator(DOWNLOADS_LIST_BUTTON_SELECTOR),
+            ),
+            (
+                "hashed Download-manager-wrapper direct button",
+                self._page.locator(DOWNLOADS_LIST_BUTTON_FALLBACK_SELECTOR),
+            ),
+            (
+                "legacy data-testid Download-manager-wrapper-show-list-button-interface",
+                self._page.get_by_test_id(
+                    "Download-manager-wrapper-show-list-button-interface"
+                ),
+            ),
+            (
+                "button inside Download-manager-wrapper",
+                self._page.locator(
+                    'div[class*="Download-manager__"] '
+                    'div[class^="Download-manager-wrapper"] button'
+                ),
+            ),
+            (
+                "global Download-manager-wrapper button",
+                self._page.locator(
+                    'div[class^="Download-manager-wrapper"]:not([class*="downloads-wrapper"]) button'
+                ),
+            ),
+            (
+                "second button in root Download-manager__",
+                self._page.locator('div[class*="Download-manager__"] button').nth(1),
+            ),
+        ]
+
+        for label, locator in candidates:
+            await self._log_locator_candidate(label, locator, prefix="")
+
+        for label, locator in candidates:
+            count = await locator.count()
+            if count == 0:
+                continue
+
+            for index in range(min(count, 3)):
+                candidate = locator.nth(index)
+                try:
+                    await candidate.wait_for(state="visible", timeout=2000)
+                    enabled = await candidate.is_enabled(timeout=1500)
+                except Exception as e:
+                    logger.info(
+                        f"⏭️  Skipping downloads list candidate {label}[{index}]: "
+                        f"not visible/ready ({e})"
+                    )
+                    continue
+
+                if not enabled:
+                    logger.info(
+                        f"⏭️  Skipping downloads list candidate {label}[{index}]: "
+                        "visible but disabled"
+                    )
+                    continue
+
+                logger.info(f"✅ Selected downloads list button: {label}[{index}]")
+                return candidate
+
+        raise PlaywrightTimeoutError(
+            "Downloads list button was not found. Expected the right button "
+            f"inside {DOWNLOADS_LIST_BUTTON_SELECTOR}."
+        )
+
+    async def _click_with_diagnostics(
+        self,
+        locator,
+        label: str,
+        *,
+        prefix: str = "    ",
+    ) -> None:
+        """Click a locator and log enough detail to diagnose actionability failures."""
+        await self._log_locator_candidate(
+            f"selected {label}", locator, prefix=prefix, limit=1
+        )
+
+        try:
+            await locator.scroll_into_view_if_needed(timeout=5000)
+            logger.info(f"{prefix}📜 Scrolled {label} into view")
+        except Exception as e:
+            logger.warning(f"{prefix}⚠️  Could not scroll {label} into view: {e}")
+
+        try:
+            await locator.click(timeout=10000)
+            logger.info(f"{prefix}✅ Clicked {label}")
+            return
+        except Exception as e:
+            logger.warning(f"{prefix}⚠️  Normal click failed for {label}: {e}")
+            await self._log_create_excel_dom_snapshot(prefix=prefix)
+
+        try:
+            await locator.click(force=True, timeout=5000)
+            logger.info(f"{prefix}✅ Clicked {label} with force=True")
+            return
+        except Exception as e:
+            logger.warning(f"{prefix}⚠️  Force click failed for {label}: {e}")
+
+        await locator.evaluate("element => element.click()")
+        logger.info(f"{prefix}✅ Clicked {label} via JavaScript")
 
     async def fake_compare_cards(
         self,
@@ -464,42 +860,72 @@ class WBScraperService:
 
                 try:
                     # Find and click download button
-                    logger.info("    💾 Looking for download button...")
-                    download_button = self._page.get_by_test_id(
-                        "Download-manager-open-modal-button-interface"
-                    )
-                    await download_button.wait_for(state="visible", timeout=10000)
+                    download_button = await self._find_create_excel_button()
                     await self._page.wait_for_timeout(1000)
-                    await download_button.click()
+                    await self._click_with_diagnostics(
+                        download_button, "Create Excel button"
+                    )
                     await self._page.wait_for_timeout(2000)
 
                     # Process popup
                     logger.info("    📝 Filling popup...")
-                    # Find input for filename
-                    simple_input = self._page.locator('[class^="Simple-input"]').first
-                    await simple_input.wait_for(state="visible", timeout=15000)
+                    modal = self._page.locator('[class*="Create-excel-modal"]').first
+                    await modal.wait_for(state="visible", timeout=15000)
+                    await self._log_locator_candidate("Create Excel modal", modal)
                     await self._page.wait_for_timeout(1000)
 
-                    input_field = simple_input.locator("input")
-                    await input_field.wait_for(state="visible", timeout=10000)
+                    # Find the filename input in the popup
+                    input_field = modal.locator("input").first
+                    await input_field.wait_for(state="visible", timeout=15000)
+                    await self._log_locator_candidate(
+                        "Create Excel modal input", input_field
+                    )
                     await self._page.wait_for_timeout(500)
 
                     # Form filename
                     file_name = f"{unique_id}-{period_text}-{segment_text}"
                     logger.info(f'    ⌨️  Entering name: "{file_name}"')
-                    await input_field.fill(file_name)
+                    try:
+                        await input_field.fill(file_name, timeout=8000)
+                        logger.info("    ✅ Filename entered via Playwright fill")
+                    except PlaywrightTimeoutError as e:
+                        logger.warning(
+                            f"    ⚠️  Filename fill timed out, trying DOM fallback: {e}"
+                        )
+                        await input_field.evaluate(
+                            """(input, value) => {
+                                input.focus();
+                                input.value = value;
+                                input.dispatchEvent(new Event('input', { bubbles: true }));
+                                input.dispatchEvent(new Event('change', { bubbles: true }));
+                            }""",
+                            file_name,
+                        )
+                        logger.info("    ✅ Filename entered via DOM fallback")
+
                     await self._page.wait_for_timeout(1000)
 
                     # Find and click confirmation button
                     logger.info("    🖱️  Clicking confirmation button...")
-                    modal = self._page.locator('[class^="Create-excel-modal"]').first
-                    await modal.wait_for(state="visible", timeout=15000)
-                    await self._page.wait_for_timeout(1000)
+                    confirm_button = modal.get_by_role(
+                        "button", name=CREATE_EXCEL_CONFIRM_RE
+                    )
+                    if await confirm_button.count() == 0:
+                        logger.warning(
+                            '    ⚠️  Button "Сформировать" not found by role, '
+                            "falling back to first modal button"
+                        )
+                        confirm_button = modal.locator("button").first
 
-                    confirm_button = modal.locator("button").first
                     await confirm_button.wait_for(state="visible", timeout=10000)
+                    await self._log_locator_candidate(
+                        "Create Excel modal confirm button", confirm_button
+                    )
                     await self._page.wait_for_timeout(500)
-                    await confirm_button.click()
+                    await self._click_with_diagnostics(
+                        confirm_button,
+                        "Create Excel modal confirm button",
+                    )
                     await self._page.wait_for_timeout(2000)
 
                     # Increment counter
@@ -508,11 +934,19 @@ class WBScraperService:
                         f"    ✅ Processed: {period_text} -> {segment_text} (total: {processed_count})"
                     )
 
-                except PlaywrightTimeoutError:
-                    # If download button not found, skip
+                except PlaywrightTimeoutError as e:
                     logger.warning(
-                        f"    ⚠️  Download button not found for: {period_text} -> {segment_text}, skipping..."
+                        f"    ⚠️  Excel creation timed out for: "
+                        f"{period_text} -> {segment_text}, skipping. Error: {e}"
                     )
+                    await self._log_create_excel_dom_snapshot()
+                    try:
+                        await self._page.keyboard.press("Escape")
+                        await self._page.wait_for_timeout(500)
+                    except Exception as cleanup_error:
+                        logger.warning(
+                            f"    ⚠️  Could not close stale modal/list: {cleanup_error}"
+                        )
                     continue
 
         logger.info(f"🎉 All filters processed! Processed elements: {processed_count}")
@@ -611,16 +1045,20 @@ class WBScraperService:
         os.makedirs(unique_folder)
         logger.info(f"📁 Created unique folder: {unique_folder}")
 
-        # Find and click show downloads list button
-        logger.info("🔍 Looking for downloads list button...")
-        show_list_button = self._page.get_by_test_id(
-            "Download-manager-wrapper-show-list-button-interface"
+        show_list_button = await self._find_downloads_list_button()
+        await self._page.wait_for_timeout(1000)
+        await self._click_with_diagnostics(
+            show_list_button,
+            "downloads list button",
+            prefix="",
         )
-        await show_list_button.wait_for(state="visible", timeout=20000)
-        await self._page.wait_for_timeout(2000)
-        await show_list_button.click()
         await self._page.wait_for_timeout(3000)
         logger.info("✅ Downloads list opened")
+        logger.info(
+            "⏳ Waiting %s seconds before downloading the first document...",
+            DOWNLOADS_LIST_REPORTS_SETTLE_TIMEOUT_MS // 1000,
+        )
+        await self._page.wait_for_timeout(DOWNLOADS_LIST_REPORTS_SETTLE_TIMEOUT_MS)
 
         # --- Stage 11: Ожидаем готовности документов ---
         await _notify(on_status, 11)

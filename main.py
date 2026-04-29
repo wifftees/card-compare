@@ -5,8 +5,11 @@ import logging
 import os
 from pathlib import Path
 
-from aiogram import Bot, Dispatcher
+from aiohttp import ClientSession
+from aiohttp.hdrs import USER_AGENT
+from aiogram import Bot, Dispatcher, __version__ as aiogram_version
 from aiogram.client.default import DefaultBotProperties
+from aiogram.client.session.aiohttp import AiohttpSession, SERVER_SOFTWARE
 from aiogram.exceptions import TelegramNetworkError
 from aiogram.fsm.storage.memory import MemoryStorage
 from aiogram.types import FSInputFile, InlineKeyboardMarkup, InlineKeyboardButton
@@ -41,6 +44,26 @@ import notifications.resolvers  # pylint: disable=unused-import  # noqa: F401 â€
 from utils.logger import setup_logging
 
 logger = logging.getLogger(__name__)
+
+
+class TrustEnvAiohttpSession(AiohttpSession):
+    """Aiogram aiohttp session that honors system proxy settings."""
+
+    async def create_session(self) -> ClientSession:
+        if self._should_reset_connector:
+            await self.close()
+
+        if self._session is None or self._session.closed:
+            self._session = ClientSession(
+                connector=self._connector_type(**self._connector_init),
+                trust_env=True,
+                headers={
+                    USER_AGENT: f"{SERVER_SOFTWARE} aiogram/{aiogram_version}",
+                },
+            )
+            self._should_reset_connector = False
+
+        return self._session
 
 
 class Application:
@@ -167,7 +190,9 @@ class Application:
         # Initialize bot FIRST (before WB client)
         logger.info("ðŸ¤– Initializing Telegram bot...")
         self.bot = Bot(
-            token=settings.bot_token, default=DefaultBotProperties(parse_mode="HTML")
+            token=settings.bot_token,
+            default=DefaultBotProperties(parse_mode="HTML"),
+            session=TrustEnvAiohttpSession(),
         )
         storage = MemoryStorage()
         self.dp = Dispatcher(storage=storage)
